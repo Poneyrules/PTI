@@ -1,0 +1,165 @@
+package com.pti.worker.core
+
+import android.content.Context
+import android.util.Log
+import com.pti.worker.alert.AlertManager
+import com.pti.worker.alert.AlertType
+import com.pti.worker.communication.CommunicationManager
+import com.pti.worker.contact.ContactManager
+import com.pti.worker.data.repository.EventRepository
+import com.pti.worker.detection.FallDetectionManager
+import com.pti.worker.detection.ImmobilityDetectionManager
+import com.pti.worker.detection.OrientationManager
+import com.pti.worker.location.PtiLocationManager
+import com.pti.worker.settings.SettingsManager
+import com.pti.worker.util.NetworkMonitor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+
+class PtiManager(
+    private val context: Context,
+    private val settingsManager: SettingsManager,
+    private val eventRepository: EventRepository,
+    private val contactManager: ContactManager,
+    private val communicationManager: CommunicationManager,
+    private val locationManager: PtiLocationManager,
+    private val networkMonitor: NetworkMonitor
+) {
+    private val tag = "PtiManager"
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    val stateMachine = PtiStateMachine()
+
+    private val alertManager = AlertManager(
+        context, communicationManager, contactManager, locationManager,
+        eventRepository, settingsManager, scope
+    )
+
+    private lateinit var fallDetection: FallDetectionManager
+    private lateinit var immobilityDetection: ImmobilityDetectionManager
+    private lateinit var orientationDetection: OrientationManager
+
+    private val _timeSinceLastActivity = MutableStateFlow(0L)
+    val timeSinceLastActivity: StateFlow<Long> = _timeSinceLastActivity.asStateFlow()
+
+    private val _isNetworkAvailable = MutableStateFlow(true)
+    val isNetworkAvailable: StateFlow<Boolean> = _isNetworkAvailable.asStateFlow()
+
+    init {
+        setupDetections()
+        setupAlertCallbacks()
+        observeNetwork()
+        observeActivityTimer()
+    }
+
+    private fun setupDetections() {
+        fallDetection = FallDetectionManager(context) {
+            onDetectionEvent(PtiEvent.FallDetected, AlertType.FALL)
+        }
+        immobilityDetection = ImmobilityDetectionManager(context) {
+            onDetectionEvent(PtiEvent.ImmobilityDetected, AlertType.IMMOBILITY)
+        }
+        orientationDetection = OrientationManager(context) {
+            onDetectionEvent(PtiEvent.OrientationAbnormal, AlertType.ORIENTATION)
+        }
+    }
+
+    private fun setupAlertCallbacks() {
+        alertManager.onPreAlertTimeout = { stateMachine.transition(PtiEvent.PreAlertTimeout) }
+        alertManager.onAlertCancelled = { stateMachine.transition(PtiEvent.CancelAlert) }
+    }
+
+    private fun observeNetwork() {
+        scope.launch {
+            networkMonitor.isOnline.collectLatest { online ->
+                _isNetworkAvailable.value = online
+                if (!online) eventRepository.logEvent("NETWORK_LOST", "Connexion réseau perdue")
+            }
+        }
+    }
+
+    private fun observeActivityTimer() {
+        scope.launch {
+            while (true) {
+                delay(1000)
+                if (stateMachine.isActiveOrHigher()) {
+                    _timeSinceLastActivity.value = immobilityDetection.getTimeSinceLastMovement()
+                }
+            }
+        }
+    }
+
+    fun activate() {
+        if (!stateMachine.transition(PtiEvent.Activate)) return
+        scope.launch {
+            try {
+                val settings = settingsManager.getSettings()
+                fallDetection.updateSettings(settings)
+                immobilityDetection.updateSettings(settings)
+                orientationDetection.updateSettings(settings)
+                locationManager.startTracking(settings.locationIntervalMs)
+                fallDetection.start()
+                immobilityDetection.start()
+                orientationDetection.start()
+                eventRepository.logEvent("PTI_ACTIVATED", "Mode PTI activé")
+                stateMachine.transition(PtiEvent.ArmingComplete)
+                Log.i(tag, "PTI ACTIVE")
+            } catch (e: Exception) {
+                Log.e(tag, "Échec armement", e)
+                eventRepository.logEvent("ERROR", e.message)
+                stateMachine.transition(PtiEvent.ArmingFailed)
+            }
+        }
+    }
+
+    fun deactivate() {
+        stateMachine.transition(PtiEvent.Deactivate)
+        stopAll()
+        scope.launch { eventRepository.logEvent("PTI_DEACTIVATED", "Mode PTI désactivé") }
+        Log.i(tag, "PTI DISABLED")
+    }
+
+    fun triggerManualSos() {
+        if (stateMachine.state.value == PtiState.DISABLED) return
+        if (stateMachine.state.value == PtiState.ACTIVE || stateMachine.state.value == PtiState.PRE_ALERT) {
+            stateMachine.transition(PtiEvent.ManualSos)
+            alertManager.triggerAlert(AlertType.MANUAL_SOS)
+        }
+    }
+
+    fun cancelCurrentAlert() {
+        alertManager.cancelPreAlert()
+        immobilityDetection.notifyUserActivity()
+        stateMachine.transition(PtiEvent.CancelAlert)
+        scope.launch { eventRepository.logEvent("ALERT_CANCELLED", "Alerte annulée par l'utilisateur") }
+    }
+
+    fun acknowledgeAlert() {
+        alertManager.acknowledgeAlert()
+        stateMachine.transition(PtiEvent.AcknowledgeAlert)
+    }
+
+    private fun onDetectionEvent(event: PtiEvent, alertType: AlertType) {
+        if (stateMachine.state.value != PtiState.ACTIVE) return
+        if (stateMachine.transition(event)) {
+            alertManager.startPreAlert(alertType)
+        }
+    }
+
+    private fun stopAll() {
+        fallDetection.stop()
+        immobilityDetection.stop()
+        orientationDetection.stop()
+        locationManager.stopTracking()
+        alertManager.cancelPreAlert()
+    }
+
+    fun release() { stopAll() }
+}

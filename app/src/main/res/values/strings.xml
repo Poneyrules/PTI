@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PTI Travailleur Isolé</string>
+    <string name="pti_active">PTI ACTIVÉ</string>
+    <string name="pti_inactive">PTI DÉSACTIVÉ</string>
+    <string name="activate_pti">ACTIVER LE PTI</string>
+    <string name="deactivate_pti">DÉSACTIVER LE PTI</string>
+    <string name="sos">SOS</string>
+    <string name="cancel_alert">ANNULER L\'ALERTE</string>
+    <string name="acknowledge">ACQUITTER</string>
+    <string name="gps_ok">GPS OK</string>
+    <string name="gps_ko">GPS INDISPONIBLE</string>
+    <string name="network_ok">RÉSEAU OK</string>
+    <string name="network_ko">RÉSEAU INDISPONIBLE</string>
+    <string name="settings">Paramètres</string>
+    <string name="contacts">Contacts d\'urgence</string>
+    <string name="event_log">Journal des événements</string>
+    <string name="diagnostic">Diagnostic</string>
+    <string name="confirm_sos_title">Confirmer le SOS ?</string>
+    <string name="confirm_sos_message">Cette action déclenchera une alerte immédiate vers vos contacts d\'urgence.</string>
+    <string name="confirm">CONFIRMER</string>
+    <string name="cancel">Annuler</string>
+</resources>
