@@ -170,13 +170,33 @@ class PtiManager(
 
 
     fun cancelCurrentAlert() {
+        Log.i(tag, "cancelCurrentAlert (état=${stateMachine.state.value}, armed=$ptiArmed)")
+        // Empêche le callback de double-transition
+        val previousCallback = alertManager.onAlertCancelled
+        alertManager.onAlertCancelled = null
         alertManager.cancelPreAlert()
-        if (ptiArmed) {
+        alertManager.onAlertCancelled = previousCallback
+
+        if (::immobilityDetection.isInitialized) {
             immobilityDetection.notifyUserActivity()
-            stateMachine.transition(PtiEvent.CancelAlert) // → ACTIVE
-        } else {
-            // SOS déclenché hors PTI → retour DISABLED
-            stateMachine.forceState(PtiState.DISABLED)
+        }
+
+        when {
+            ptiArmed -> {
+                // Retour surveillance active (pré-alerte ou alerte acquittée)
+                if (stateMachine.state.value == PtiState.PRE_ALERT ||
+                    stateMachine.state.value == PtiState.ALERT
+                ) {
+                    stateMachine.forceState(PtiState.ACTIVE)
+                } else {
+                    stateMachine.transition(PtiEvent.CancelAlert)
+                }
+                Log.i(tag, "Pré-alerte/alerte acquittée → ACTIVE")
+            }
+            else -> {
+                stateMachine.forceState(PtiState.DISABLED)
+                Log.i(tag, "Alerte hors PTI acquittée → DISABLED")
+            }
         }
         scope.launch { eventRepository.logEvent("ALERT_CANCELLED", "Alerte annulée par l'utilisateur") }
     }
@@ -204,6 +224,19 @@ class PtiManager(
         orientationDetection.stop()
         locationManager.stopTracking()
         alertManager.cancelPreAlert()
+    }
+
+    fun getOrientationManager(): OrientationManager = orientationDetection
+
+    fun calibrateOrientation(): Pair<Float, Float> {
+        val result = orientationDetection.calibrateNow()
+        scope.launch {
+            val s = settingsManager.getSettings()
+            settingsManager.updateSettings(
+                s.copy(calibrationPitch = result.first, calibrationRoll = result.second)
+            )
+        }
+        return result
     }
 
     fun release() { stopAll() }

@@ -39,6 +39,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val events = app.eventRepository.getRecentEvents(50)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Orientation / calibrage (exposes live values)
+    private val _orientationPitch = MutableStateFlow(0f)
+    val orientationPitch = _orientationPitch.asStateFlow()
+    private val _orientationRoll = MutableStateFlow(0f)
+    val orientationRoll = _orientationRoll.asStateFlow()
+    private val _orientationDeviation = MutableStateFlow(0f)
+    val orientationDeviation = _orientationDeviation.asStateFlow()
+    private val _orientationThreshold = MutableStateFlow(45f)
+    val orientationThreshold = _orientationThreshold.asStateFlow()
+    private val _isOrientationCalibrated = MutableStateFlow(false)
+    val isOrientationCalibrated = _isOrientationCalibrated.asStateFlow()
+
     init {
         observeState()
         checkPermissions()
@@ -113,11 +125,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancelAlert() {
-        PtiForegroundService.cancelAlert(getApplication())
+        // Appel direct sur le manager partagé (fiable, immédiat)
+        // + notification au service si actif
+        Log.i("MainViewModel", "Acquittement pré-alerte / alerte demandé")
+        ptiManager.cancelCurrentAlert()
+        try {
+            PtiForegroundService.cancelAlert(getApplication())
+        } catch (e: Exception) {
+            Log.w("MainViewModel", "Service cancel non disponible", e)
+        }
     }
 
     fun clearPermissionBlocked() {
         _uiState.value = _uiState.value.copy(permissionBlocked = false)
+    }
+
+    fun startOrientationPreview() {
+        try {
+            val om = ptiManager.getOrientationManager()
+            om.startPreview()
+            viewModelScope.launch {
+                val settings = app.settingsManager.getSettings()
+                _orientationThreshold.value = settings.orientationThresholdDegrees
+                _isOrientationCalibrated.value =
+                    settings.calibrationPitch != null && settings.calibrationRoll != null
+                om.updateSettings(settings)
+                launch {
+                    om.currentPitch.collect { _orientationPitch.value = it }
+                }
+                launch {
+                    om.currentRoll.collect { _orientationRoll.value = it }
+                }
+                launch {
+                    om.currentDeviation.collect { _orientationDeviation.value = it }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainViewModel", "startOrientationPreview", e)
+        }
+    }
+
+    fun stopOrientationPreview() {
+        try {
+            ptiManager.getOrientationManager().stopPreview()
+        } catch (e: Exception) {
+            Log.w("MainViewModel", "stopOrientationPreview", e)
+        }
+    }
+
+    fun calibrateOrientation(): Pair<Float, Float> {
+        val result = ptiManager.calibrateOrientation()
+        _isOrientationCalibrated.value = true
+        return result
     }
 
     fun formatDuration(ms: Long): String {

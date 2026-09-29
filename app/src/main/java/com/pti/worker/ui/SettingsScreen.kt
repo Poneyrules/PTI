@@ -20,7 +20,8 @@ import com.pti.worker.ui.viewmodel.SettingsViewModel
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
-    onPickRingtone: () -> Unit = {}
+    onPickRingtone: () -> Unit = {},
+    onNavigateCalibration: () -> Unit = {}
 ) {
     val settings by viewModel.settings.collectAsState()
     val context = LocalContext.current
@@ -54,6 +55,30 @@ fun SettingsScreen(
             }
             SwitchRow("Perte de verticalité", settings.orientationDetectionEnabled) {
                 viewModel.setOrientationEnabled(it)
+            }
+            Text("Seuil d'écart angulaire : ${"%.0f".format(settings.orientationThresholdDegrees)}°")
+            Slider(
+                value = settings.orientationThresholdDegrees,
+                onValueChange = {
+                    viewModel.updateSettings(settings.copy(orientationThresholdDegrees = it))
+                },
+                valueRange = 15f..90f,
+                steps = 14
+            )
+            Text("Durée avant pré-alerte verticalité : ${settings.orientationAbnormalDurationMs / 1000}s")
+            Slider(
+                value = settings.orientationAbnormalDurationMs.toFloat(),
+                onValueChange = {
+                    viewModel.updateSettings(settings.copy(orientationAbnormalDurationMs = it.toLong()))
+                },
+                valueRange = 10_000f..180_000f,
+                steps = 16
+            )
+            OutlinedButton(
+                onClick = onNavigateCalibration,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+            ) {
+                Text("Calibrage de la verticalité")
             }
 
             Spacer(Modifier.height(24.dp))

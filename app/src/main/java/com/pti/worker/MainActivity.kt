@@ -83,7 +83,8 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             viewModel = settingsViewModel,
                             onBack = { navController.popBackStack() },
-                            onPickRingtone = { openRingtonePicker() }
+                            onPickRingtone = { openRingtonePicker() },
+                            onNavigateCalibration = { navController.navigate("calibration") }
                         )
                     }
                     composable("contacts") {
@@ -100,6 +101,12 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("diagnostic") {
                         DiagnosticScreen(
+                            viewModel = mainViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("calibration") {
+                        CalibrationScreen(
                             viewModel = mainViewModel,
                             onBack = { navController.popBackStack() }
                         )

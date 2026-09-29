@@ -19,13 +19,16 @@ data class SettingsEntity(
     val fallSensitivity: Float = 0.6f,
     val orientationDetectionEnabled: Boolean = true,
     val orientationAbnormalDurationMs: Long = Constants.Defaults.ORIENTATION_ABNORMAL_DURATION_MS,
-    val orientationThresholdDegrees: Float = 60f,
+    /** Seuil d'écart angulaire (degrés) par rapport à la verticale calibrée */
+    val orientationThresholdDegrees: Float = 45f,
     val locationIntervalMs: Long = Constants.Defaults.LOCATION_INTERVAL_MS,
     val sosCancelWindowMs: Long = Constants.Defaults.SOS_CANCEL_WINDOW_MS,
     val soundEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
     val restoreAfterBoot: Boolean = true,
-    /** URI de la sonnerie d'alerte (null = sonnerie alarme système par défaut) */
     val alertRingtoneUri: String? = null,
-    val alertRingtoneName: String? = null
+    val alertRingtoneName: String? = null,
+    /** Calibrage verticalité */
+    val calibrationPitch: Float? = null,
+    val calibrationRoll: Float? = null
 )
