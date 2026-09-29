@@ -171,11 +171,8 @@ class PtiManager(
 
     fun cancelCurrentAlert() {
         Log.i(tag, "cancelCurrentAlert (état=${stateMachine.state.value}, armed=$ptiArmed)")
-        // Empêche le callback de double-transition
-        val previousCallback = alertManager.onAlertCancelled
-        alertManager.onAlertCancelled = null
-        alertManager.cancelPreAlert()
-        alertManager.onAlertCancelled = previousCallback
+        // Arrêt son/vibration sans callback (on gère la transition d'état ici)
+        alertManager.cancelPreAlert(notifyCancelled = false)
 
         if (::immobilityDetection.isInitialized) {
             immobilityDetection.notifyUserActivity()
@@ -226,7 +223,8 @@ class PtiManager(
         immobilityDetection.stop()
         orientationDetection.stop()
         locationManager.stopTracking()
-        alertManager.cancelPreAlert()
+        // Pas de callback : deactivate/activate gèrent déjà l'état
+        alertManager.cancelPreAlert(notifyCancelled = false)
     }
 
     fun getOrientationManager(): OrientationManager = orientationDetection

@@ -41,7 +41,9 @@ class AlertManager(
     var onPreAlertTimeout: (() -> Unit)? = null
 
     fun startPreAlert(type: AlertType, message: String? = null) {
-        cancelPreAlert()
+        // Nettoyage interne sans callback : sinon on repasse PRE_ALERT → ACTIVE
+        // juste après la transition, et le bouton d'acquittement n'apparaît jamais.
+        cancelPreAlert(notifyCancelled = false)
         scope.launch {
             val settings = settingsManager.getSettings()
             val duration = settings.preAlertDurationMs
@@ -73,15 +75,23 @@ class AlertManager(
         }
     }
 
-    fun cancelPreAlert() {
+    /**
+     * Arrête pré-alerte / son / vibration.
+     * @param notifyCancelled si true, notifie le callback (acquittement utilisateur).
+     *                        Doit rester false lors d'un redémarrage interne (startPreAlert)
+     *                        pour ne pas casser la transition ACTIVE → PRE_ALERT.
+     */
+    fun cancelPreAlert(notifyCancelled: Boolean = true) {
         preAlertJob?.cancel()
         preAlertJob = null
         cancelWindowJob?.cancel()
         cancelWindowJob = null
         stopAlarmSound()
         stopVibration()
-        Log.i(tag, "Pré-alerte / alarme annulée")
-        onAlertCancelled?.invoke()
+        Log.i(tag, "Pré-alerte / alarme annulée (notify=$notifyCancelled)")
+        if (notifyCancelled) {
+            onAlertCancelled?.invoke()
+        }
     }
 
 
@@ -144,7 +154,8 @@ class AlertManager(
     fun acknowledgeAlert() {
         scope.launch {
             eventRepository.logEvent(type = "ACKNOWLEDGED", message = "Alerte acquittée")
-            cancelPreAlert()
+            // Pas de callback : PtiManager.acknowledgeAlert gère la transition d'état
+            cancelPreAlert(notifyCancelled = false)
         }
     }
 
