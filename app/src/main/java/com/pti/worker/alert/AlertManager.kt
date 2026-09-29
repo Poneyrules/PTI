@@ -221,19 +221,56 @@ class AlertManager(
     }
 
     /**
-     * Force le haut-parleur pendant l'appel.
+     * Force le haut-parleur + volume max pendant l'appel d'urgence.
      * - Écoute l'état téléphonique (OFFHOOK) pour activer au bon moment
      * - Retente aussi à intervalles courts (certains constructeurs retardent l'audio)
+     * - Volume STREAM_VOICE_CALL porté au maximum
      */
     private fun enableSpeakerphoneForCall() {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val telephonyManager =
             context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
+        // Mémorise le volume d'appel pour restauration en fin d'appel
+        val previousCallVolume = try {
+            audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
+        } catch (_: Exception) {
+            -1
+        }
+
+        fun setMaxCallVolume() {
+            try {
+                val maxCall = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+                audioManager.setStreamVolume(
+                    AudioManager.STREAM_VOICE_CALL,
+                    maxCall,
+                    0 // pas de UI volume
+                )
+                // Certains appareils routent le HP sur MUSIC / SYSTEM en plus
+                try {
+                    val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    // Ne force pas MUSIC au max pour ne pas casser le reste, seulement si très bas
+                    val curMusic = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    if (curMusic < maxMusic / 2) {
+                        audioManager.setStreamVolume(
+                            AudioManager.STREAM_MUSIC,
+                            maxOf(curMusic, maxMusic * 3 / 4),
+                            0
+                        )
+                    }
+                } catch (_: Exception) {}
+                Log.i(tag, "Volume appel max ($maxCall)")
+            } catch (e: Exception) {
+                Log.w(tag, "Impossible de maximiser le volume", e)
+            }
+        }
+
         fun setSpeakerOn() {
             try {
+                // Mode communication : meilleure compatibilité HP sur beaucoup de devices
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                     val speaker = audioManager.availableCommunicationDevices
                         .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                     if (speaker != null) {
@@ -245,19 +282,39 @@ class AlertManager(
                         Log.i(tag, "Haut-parleur fallback isSpeakerphoneOn")
                     }
                 } else {
-                    audioManager.mode = AudioManager.MODE_IN_CALL
                     @Suppress("DEPRECATION")
                     audioManager.isSpeakerphoneOn = true
-                    Log.i(tag, "Haut-parleur activé (mode IN_CALL)")
+                    Log.i(tag, "Haut-parleur activé (MODE_IN_COMMUNICATION)")
                 }
+
+                // Volume max à chaque tentative (le système peut le baisser au décroché)
+                setMaxCallVolume()
             } catch (e: Exception) {
                 Log.w(tag, "Impossible d'activer le haut-parleur", e)
             }
         }
 
-        // Tentatives périodiques pendant ~15 s (temps de décroché)
+        fun restoreAudio() {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audioManager.clearCommunicationDevice()
+                }
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = false
+                audioManager.mode = AudioManager.MODE_NORMAL
+                if (previousCallVolume >= 0) {
+                    audioManager.setStreamVolume(
+                        AudioManager.STREAM_VOICE_CALL,
+                        previousCallVolume,
+                        0
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+
+        // Tentatives périodiques pendant ~20 s (temps de décroché + stabilisation)
         scope.launch {
-            repeat(15) {
+            repeat(20) {
                 delay(1000)
                 setSpeakerOn()
             }
@@ -279,18 +336,14 @@ class AlertManager(
                 val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
                     override fun onCallStateChanged(state: Int) {
                         if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-                            Log.i(tag, "Appel OFFHOOK → haut-parleur")
+                            Log.i(tag, "Appel OFFHOOK → haut-parleur + volume max")
                             setSpeakerOn()
                         }
                         if (state == TelephonyManager.CALL_STATE_IDLE) {
                             try {
                                 telephonyManager.unregisterTelephonyCallback(this)
                             } catch (_: Exception) {}
-                            try {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    audioManager.clearCommunicationDevice()
-                                }
-                            } catch (_: Exception) {}
+                            restoreAudio()
                         }
                     }
                 }
@@ -301,7 +354,7 @@ class AlertManager(
                     @Deprecated("Deprecated in Java")
                     override fun onCallStateChanged(state: Int, phoneNumber: String?) {
                         if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-                            Log.i(tag, "Appel OFFHOOK → haut-parleur")
+                            Log.i(tag, "Appel OFFHOOK → haut-parleur + volume max")
                             setSpeakerOn()
                         }
                         if (state == TelephonyManager.CALL_STATE_IDLE) {
@@ -309,6 +362,7 @@ class AlertManager(
                                 @Suppress("DEPRECATION")
                                 telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
                             } catch (_: Exception) {}
+                            restoreAudio()
                         }
                     }
                 }
