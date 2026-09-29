@@ -51,7 +51,7 @@ class AlertManager(
                 vibrate(longArrayOf(0, 500, 200, 500, 200, 500, 200, 500))
             }
             if (settings.soundEnabled) {
-                startAlarmSound(loop = true)
+                startAlarmSound(loop = true, customUri = settings.alertRingtoneUri)
             }
 
             val location = locationManager.lastLocation.value
@@ -108,7 +108,7 @@ class AlertManager(
                 vibrate(longArrayOf(0, 1000, 300, 1000, 300, 1000, 300, 1000))
             }
             if (settings.soundEnabled) {
-                startAlarmSound(loop = true)
+                startAlarmSound(loop = true, customUri = settings.alertRingtoneUri)
             }
 
             eventRepository.logEvent(
@@ -158,12 +158,15 @@ class AlertManager(
 
     // ─── Son d'alarme ───────────────────────────────────────────
 
-    private fun startAlarmSound(loop: Boolean) {
+    private fun startAlarmSound(loop: Boolean, customUri: String? = null) {
         stopAlarmSound()
         try {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val uri = when {
+                !customUri.isNullOrBlank() -> android.net.Uri.parse(customUri)
+                else -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            }
 
             if (uri == null) {
                 Log.w(tag, "Aucune URI son disponible")

@@ -24,5 +24,8 @@ data class SettingsEntity(
     val sosCancelWindowMs: Long = Constants.Defaults.SOS_CANCEL_WINDOW_MS,
     val soundEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
-    val restoreAfterBoot: Boolean = true
+    val restoreAfterBoot: Boolean = true,
+    /** URI de la sonnerie d'alerte (null = sonnerie alarme système par défaut) */
+    val alertRingtoneUri: String? = null,
+    val alertRingtoneName: String? = null
 )

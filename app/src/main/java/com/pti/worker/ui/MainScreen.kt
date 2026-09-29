@@ -68,22 +68,53 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(24.dp))
             MainActionButton(uiState, viewModel)
             Spacer(modifier = Modifier.height(24.dp))
-            // SOS toujours disponible, même si le PTI n'est pas activé
+
+            // Pendant pré-alerte : gros bouton d'acquittement (sans désactiver le PTI)
+            if (uiState.ptiState == PtiState.PRE_ALERT) {
+                Button(
+                    onClick = { viewModel.cancelAlert() },
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PtiGreen),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "JE SUIS OK — ANNULER",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Pré-alerte en cours. Appuyez pour confirmer que vous allez bien.",
+                    textAlign = TextAlign.Center,
+                    color = PtiOrange,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            } else if (uiState.ptiState == PtiState.ALERT) {
+                Button(
+                    onClick = { viewModel.cancelAlert() },
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PtiOrange),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "ACQUITTER L'ALERTE",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = Color.White
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // SOS toujours disponible (sauf pendant pré-alerte/alerte pour éviter confusion)
             SosButton(
-                enabled = true,
+                enabled = uiState.ptiState != PtiState.PRE_ALERT && uiState.ptiState != PtiState.ALERT,
                 onClick = { viewModel.requestSosConfirmation() }
             )
-
-            if (uiState.ptiState == PtiState.PRE_ALERT || uiState.ptiState == PtiState.ALERT) {
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedButton(
-                    onClick = { viewModel.cancelAlert() },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PtiOrange)
-                ) {
-                    Text("ANNULER L'ALERTE", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                }
-            }
         }
     }
 

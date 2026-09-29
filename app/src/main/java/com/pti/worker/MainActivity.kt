@@ -1,5 +1,8 @@
 package com.pti.worker
 
+import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +29,34 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { mainViewModel.checkPermissions() }
 
+    private val ringtonePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val uri: Uri? = result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            val current = settingsViewModel.settings.value
+            if (uri != null) {
+                val ringtone = RingtoneManager.getRingtone(this, uri)
+                val name = try {
+                    ringtone?.getTitle(this) ?: "Sonnerie personnalisée"
+                } catch (e: Exception) {
+                    "Sonnerie personnalisée"
+                }
+                settingsViewModel.updateSettings(
+                    current.copy(
+                        alertRingtoneUri = uri.toString(),
+                        alertRingtoneName = name
+                    )
+                )
+            } else {
+                settingsViewModel.updateSettings(
+                    current.copy(alertRingtoneUri = null, alertRingtoneName = null)
+                )
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -49,20 +80,52 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("settings") {
-                        SettingsScreen(viewModel = settingsViewModel, onBack = { navController.popBackStack() })
+                        SettingsScreen(
+                            viewModel = settingsViewModel,
+                            onBack = { navController.popBackStack() },
+                            onPickRingtone = { openRingtonePicker() }
+                        )
                     }
                     composable("contacts") {
-                        ContactsScreen(viewModel = contactsViewModel, onBack = { navController.popBackStack() })
+                        ContactsScreen(
+                            viewModel = contactsViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                     composable("events") {
-                        EventLogScreen(viewModel = mainViewModel, onBack = { navController.popBackStack() })
+                        EventLogScreen(
+                            viewModel = mainViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                     composable("diagnostic") {
-                        DiagnosticScreen(viewModel = mainViewModel, onBack = { navController.popBackStack() })
+                        DiagnosticScreen(
+                            viewModel = mainViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                 }
             }
         }
+    }
+
+    private fun openRingtonePicker() {
+        val currentUri = settingsViewModel.settings.value.alertRingtoneUri
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Sonnerie d'alerte PTI")
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            if (currentUri != null) {
+                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(currentUri))
+            } else {
+                putExtra(
+                    RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                )
+            }
+        }
+        ringtonePickerLauncher.launch(intent)
     }
 
     override fun onResume() {
