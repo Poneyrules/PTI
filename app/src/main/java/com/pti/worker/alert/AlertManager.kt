@@ -7,6 +7,7 @@ import android.net.Uri
 import android.Manifest
 import androidx.core.content.ContextCompat
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -14,6 +15,9 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyCallback
+import android.telephony.TelephonyManager
 import android.util.Log
 import com.pti.worker.communication.CommunicationManager
 import com.pti.worker.contact.ContactManager
@@ -171,8 +175,9 @@ class AlertManager(
     }
 
     /**
-     * Déclenche un appel téléphonique vers le contact d'urgence priorité 1.
-     * Utilisé à l'issue de la pré-alerte pour immobilité et perte de verticalité.
+     * Déclenche un appel téléphonique vers le contact d'urgence priorité 1,
+     * forcé en haut-parleur pour que le travailleur isolé puisse communiquer
+     * sans tenir le téléphone.
      */
     private suspend fun callPriority1Contact() {
         val contact = contactManager.getPriority1Contact()
@@ -190,6 +195,10 @@ class AlertManager(
             return
         }
         try {
+            // Coupe l'alarme pour laisser place à l'appel en haut-parleur
+            stopAlarmSound()
+            stopVibration()
+
             val phone = contact.phoneNumber.filter { it.isDigit() || it == '+' }
             val intent = Intent(Intent.ACTION_CALL).apply {
                 data = Uri.parse("tel:$phone")
@@ -199,15 +208,121 @@ class AlertManager(
             Log.i(tag, "Appel démarré vers ${contact.name} ($phone)")
             eventRepository.logEvent(
                 "CALL_STARTED",
-                "Appel vers ${contact.name} (${contact.phoneNumber})"
+                "Appel HP vers ${contact.name} (${contact.phoneNumber})"
             )
+
+            // Active le haut-parleur dès que l'appel est en cours
+            enableSpeakerphoneForCall()
         } catch (e: Exception) {
             Log.e(tag, "Échec appel vers ${contact.phoneNumber}", e)
             eventRepository.logEvent("CALL_FAILED", e.message)
         }
     }
 
-        private fun defaultMessage(type: AlertType) = when (type) {
+    /**
+     * Force le haut-parleur pendant l'appel.
+     * - Écoute l'état téléphonique (OFFHOOK) pour activer au bon moment
+     * - Retente aussi à intervalles courts (certains constructeurs retardent l'audio)
+     */
+    private fun enableSpeakerphoneForCall() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val telephonyManager =
+            context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+
+        fun setSpeakerOn() {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                    val speaker = audioManager.availableCommunicationDevices
+                        .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    if (speaker != null) {
+                        val ok = audioManager.setCommunicationDevice(speaker)
+                        Log.i(tag, "Haut-parleur API31+ : $ok")
+                    } else {
+                        @Suppress("DEPRECATION")
+                        audioManager.isSpeakerphoneOn = true
+                        Log.i(tag, "Haut-parleur fallback isSpeakerphoneOn")
+                    }
+                } else {
+                    audioManager.mode = AudioManager.MODE_IN_CALL
+                    @Suppress("DEPRECATION")
+                    audioManager.isSpeakerphoneOn = true
+                    Log.i(tag, "Haut-parleur activé (mode IN_CALL)")
+                }
+            } catch (e: Exception) {
+                Log.w(tag, "Impossible d'activer le haut-parleur", e)
+            }
+        }
+
+        // Tentatives périodiques pendant ~15 s (temps de décroché)
+        scope.launch {
+            repeat(15) {
+                delay(1000)
+                setSpeakerOn()
+            }
+        }
+
+        // Activation au passage en communication (plus fiable)
+        try {
+            val hasPhoneState = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasPhoneState) {
+                Log.w(tag, "READ_PHONE_STATE absente – retries timer uniquement")
+                setSpeakerOn()
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                    override fun onCallStateChanged(state: Int) {
+                        if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
+                            Log.i(tag, "Appel OFFHOOK → haut-parleur")
+                            setSpeakerOn()
+                        }
+                        if (state == TelephonyManager.CALL_STATE_IDLE) {
+                            try {
+                                telephonyManager.unregisterTelephonyCallback(this)
+                            } catch (_: Exception) {}
+                            try {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    audioManager.clearCommunicationDevice()
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+                telephonyManager.registerTelephonyCallback(context.mainExecutor, callback)
+            } else {
+                @Suppress("DEPRECATION")
+                val listener = object : PhoneStateListener() {
+                    @Deprecated("Deprecated in Java")
+                    override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                        if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
+                            Log.i(tag, "Appel OFFHOOK → haut-parleur")
+                            setSpeakerOn()
+                        }
+                        if (state == TelephonyManager.CALL_STATE_IDLE) {
+                            try {
+                                @Suppress("DEPRECATION")
+                                telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+                @Suppress("DEPRECATION")
+                telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+            }
+            // Première tentative immédiate
+            setSpeakerOn()
+        } catch (e: Exception) {
+            Log.w(tag, "Écoute état appel impossible", e)
+            setSpeakerOn()
+        }
+    }
+
+    private fun defaultMessage(type: AlertType) = when (type) {
         AlertType.MANUAL_SOS -> "SOS manuel déclenché"
         AlertType.FALL -> "Chute détectée"
         AlertType.IMMOBILITY -> "Immobilité prolongée détectée"

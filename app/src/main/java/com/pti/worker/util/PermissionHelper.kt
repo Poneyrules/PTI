@@ -17,6 +17,7 @@ object PermissionHelper {
         add(Manifest.permission.ACCESS_NETWORK_STATE)
         add(Manifest.permission.SEND_SMS)
         add(Manifest.permission.CALL_PHONE)
+        add(Manifest.permission.READ_PHONE_STATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             add(Manifest.permission.ACTIVITY_RECOGNITION)
         }
