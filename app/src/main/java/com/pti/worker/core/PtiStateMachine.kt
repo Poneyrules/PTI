@@ -34,8 +34,10 @@ class PtiStateMachine {
         return when (current) {
             PtiState.DISABLED -> when (event) {
                 is PtiEvent.Activate -> PtiState.ARMING
+                is PtiEvent.ManualSos -> PtiState.ALERT
                 else -> null
             }
+
             PtiState.ARMING -> when (event) {
                 is PtiEvent.ArmingComplete -> PtiState.ACTIVE
                 is PtiEvent.ArmingFailed -> PtiState.ERROR

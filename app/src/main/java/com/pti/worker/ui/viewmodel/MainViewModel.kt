@@ -1,20 +1,13 @@
 package com.pti.worker.ui.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pti.worker.PtiApplication
-import com.pti.worker.communication.SmsCommunicationManager
-import com.pti.worker.contact.ContactManager
-import com.pti.worker.core.PtiManager
 import com.pti.worker.core.PtiState
-import com.pti.worker.data.repository.ContactRepository
-import com.pti.worker.data.repository.EventRepository
 import com.pti.worker.location.PtiLocation
-import com.pti.worker.location.PtiLocationManager
 import com.pti.worker.service.PtiForegroundService
-import com.pti.worker.settings.SettingsManager
-import com.pti.worker.util.NetworkMonitor
 import com.pti.worker.util.PermissionHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,35 +23,20 @@ data class MainUiState(
     val isNetworkAvailable: Boolean = true,
     val timeSinceLastActivityMs: Long = 0L,
     val showSosConfirmation: Boolean = false,
-    val missingPermissions: List<String> = emptyList()
+    val missingPermissions: List<String> = emptyList(),
+    val permissionBlocked: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as PtiApplication
-    private val db = app.database
-    private val eventRepo = EventRepository(db.eventDao())
-    private val contactRepo = ContactRepository(db.contactDao())
-    private val settingsManager = SettingsManager(db.settingsDao())
-    private val contactManager = ContactManager(contactRepo)
-    private val locationManager = PtiLocationManager(application)
-    private val networkMonitor = NetworkMonitor(application)
-    private val communicationManager = SmsCommunicationManager(application)
-
-    private val ptiManager = PtiManager(
-        context = application,
-        settingsManager = settingsManager,
-        eventRepository = eventRepo,
-        contactManager = contactManager,
-        communicationManager = communicationManager,
-        locationManager = locationManager,
-        networkMonitor = networkMonitor
-    )
+    private val ptiManager = app.ptiManager
+    private val locationManager = app.locationManager
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
-    val events = eventRepo.getRecentEvents(50)
+    val events = app.eventRepository.getRecentEvents(50)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
@@ -67,8 +45,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun observeState() {
+        // Observe la MÊME instance que le Service
         viewModelScope.launch {
             ptiManager.stateMachine.state.collect { state ->
+                Log.i("MainViewModel", "État PTI → $state")
                 _uiState.value = _uiState.value.copy(ptiState = state)
             }
         }
@@ -96,20 +76,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkPermissions() {
         val missing = PermissionHelper.missingPermissions(getApplication())
-        _uiState.value = _uiState.value.copy(missingPermissions = missing)
+        _uiState.value = _uiState.value.copy(
+            missingPermissions = missing,
+            permissionBlocked = missing.isNotEmpty()
+        )
     }
 
     fun activatePti() {
+        checkPermissions()
         if (!PermissionHelper.hasAllRequiredPermissions(getApplication())) {
-            checkPermissions()
+            Log.w("MainViewModel", "Activation bloquée – permissions manquantes: ${_uiState.value.missingPermissions}")
+            _uiState.value = _uiState.value.copy(permissionBlocked = true)
             return
         }
+        Log.i("MainViewModel", "Démarrage du service PTI…")
+        // Démarre le Foreground Service (qui appellera ptiManager.activate())
         PtiForegroundService.start(getApplication())
     }
 
     fun deactivatePti() {
+        Log.i("MainViewModel", "Arrêt du service PTI…")
         PtiForegroundService.stop(getApplication())
-        ptiManager.deactivate()
     }
 
     fun requestSosConfirmation() {
@@ -127,6 +114,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelAlert() {
         PtiForegroundService.cancelAlert(getApplication())
+    }
+
+    fun clearPermissionBlocked() {
+        _uiState.value = _uiState.value.copy(permissionBlocked = false)
     }
 
     fun formatDuration(ms: Long): String {

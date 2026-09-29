@@ -68,10 +68,12 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(24.dp))
             MainActionButton(uiState, viewModel)
             Spacer(modifier = Modifier.height(24.dp))
+            // SOS toujours disponible, même si le PTI n'est pas activé
             SosButton(
-                enabled = uiState.ptiState != PtiState.DISABLED,
+                enabled = true,
                 onClick = { viewModel.requestSosConfirmation() }
             )
+
             if (uiState.ptiState == PtiState.PRE_ALERT || uiState.ptiState == PtiState.ALERT) {
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(
@@ -101,7 +103,30 @@ fun MainScreen(
             }
         )
     }
+
+    // Feedback si permissions manquantes
+    if (uiState.permissionBlocked) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearPermissionBlocked() },
+            title = { Text("Permissions requises") },
+            text = {
+                Text(
+                    "Impossible d'activer le PTI. Accordez les permissions suivantes :\n\n" +
+                        uiState.missingPermissions.joinToString("\n") {
+                            "• " + it.substringAfterLast('.')
+                        } +
+                        "\n\nAllez dans Paramètres système → Applications → PTI → Permissions."
+                )
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.clearPermissionBlocked() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 }
+
 
 @Composable
 private fun StatusCard(uiState: MainUiState) {
