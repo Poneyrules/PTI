@@ -88,11 +88,21 @@ class PtiForegroundService : Service() {
     }
 
     private fun buildNotification(state: PtiState): Notification {
-        val pendingIntent = PendingIntent.getActivity(
+        val openAppIntent = PendingIntent.getActivity(
             this, 0,
-            Intent(this, MainActivity::class.java),
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        val isPreAlertOrAlert = state == PtiState.PRE_ALERT || state == PtiState.ALERT
+        val channelId = if (isPreAlertOrAlert) {
+            Constants.ALERT_NOTIFICATION_CHANNEL_ID
+        } else {
+            Constants.NOTIFICATION_CHANNEL_ID
+        }
+
         val title = when (state) {
             PtiState.ACTIVE -> "PTI actif"
             PtiState.PRE_ALERT -> "Pré-alerte en cours"
@@ -102,25 +112,57 @@ class PtiForegroundService : Service() {
         }
         val text = when (state) {
             PtiState.ACTIVE -> "Surveillance en cours"
-            PtiState.PRE_ALERT -> "Appuyez pour annuler"
-            PtiState.ALERT -> "Alerte déclenchée"
+            PtiState.PRE_ALERT -> "Appuyez sur JE SUIS OK pour acquitter"
+            PtiState.ALERT -> "Alerte déclenchée — appuyez pour acquitter"
             else -> "Service de protection"
         }
-        return NotificationCompat.Builder(this, Constants.NOTIFICATION_CHANNEL_ID)
+
+        val builder = NotificationCompat.Builder(this, channelId)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(openAppIntent)
             .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(
-                if (state == PtiState.ALERT || state == PtiState.PRE_ALERT)
-                    NotificationCompat.PRIORITY_HIGH
-                else
-                    NotificationCompat.PRIORITY_LOW
+            .setOnlyAlertOnce(state == PtiState.ACTIVE || state == PtiState.ARMING)
+            .setCategory(
+                if (isPreAlertOrAlert) NotificationCompat.CATEGORY_ALARM
+                else NotificationCompat.CATEGORY_SERVICE
             )
-            .build()
+            .setPriority(
+                if (isPreAlertOrAlert) NotificationCompat.PRIORITY_HIGH
+                else NotificationCompat.PRIORITY_LOW
+            )
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        // Bouton d'acquittement visible dès le déclenchement de la pré-alerte
+        // (perte de verticalité, immobilité, chute) et pendant l'alerte
+        if (isPreAlertOrAlert) {
+            val cancelIntent = PendingIntent.getService(
+                this,
+                1,
+                Intent(this, PtiForegroundService::class.java).apply {
+                    action = Constants.ACTION_CANCEL_ALERT
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val actionLabel = if (state == PtiState.PRE_ALERT) {
+                "JE SUIS OK"
+            } else {
+                "ACQUITTER"
+            }
+            builder.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                actionLabel,
+                cancelIntent
+            )
+            // Heads-up + alarme pour que le bouton soit immédiatement accessible
+            builder.setDefaults(NotificationCompat.DEFAULT_ALL)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                builder.setFullScreenIntent(openAppIntent, true)
+            }
+        }
+
+        return builder.build()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

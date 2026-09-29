@@ -4,6 +4,8 @@ object Constants {
 
     const val NOTIFICATION_CHANNEL_ID = "pti_service_channel"
     const val NOTIFICATION_CHANNEL_NAME = "Service PTI"
+    const val ALERT_NOTIFICATION_CHANNEL_ID = "pti_alert_channel"
+    const val ALERT_NOTIFICATION_CHANNEL_NAME = "Alertes PTI"
     const val NOTIFICATION_ID = 1001
     const val ALERT_NOTIFICATION_ID = 1002
     const val PRE_ALERT_NOTIFICATION_ID = 1003

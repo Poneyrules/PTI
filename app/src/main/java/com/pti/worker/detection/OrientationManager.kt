@@ -101,6 +101,13 @@ class OrientationManager(
 
     fun isSensorAvailable(): Boolean = accelerometer != null || gravitySensor != null
 
+    /** Réinitialise le timer d'orientation anormale (après acquittement) */
+    fun resetAbnormalTimer() {
+        abnormalStartTimestamp = null
+        lastTriggerMs = System.currentTimeMillis()
+        Log.d(tag, "Timer orientation anormale réinitialisé")
+    }
+
     /** Calibre la position actuelle comme verticale de référence */
     fun calibrateNow(): Pair<Float, Float> {
         baselinePitch = _currentPitch.value

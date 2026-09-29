@@ -75,13 +75,15 @@ class PtiApplication : Application() {
             }
 
             val alertChannel = NotificationChannel(
-                "pti_alert_channel",
-                "Alertes PTI",
+                Constants.ALERT_NOTIFICATION_CHANNEL_ID,
+                Constants.ALERT_NOTIFICATION_CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Alertes SOS et pré-alertes"
+                description = "Alertes SOS et pré-alertes (perte de verticalité, immobilité, chute)"
                 enableVibration(true)
                 enableLights(true)
+                setBypassDnd(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
             val manager = getSystemService(NotificationManager::class.java)

@@ -180,6 +180,9 @@ class PtiManager(
         if (::immobilityDetection.isInitialized) {
             immobilityDetection.notifyUserActivity()
         }
+        if (::orientationDetection.isInitialized) {
+            orientationDetection.resetAbnormalTimer()
+        }
 
         when {
             ptiArmed -> {
