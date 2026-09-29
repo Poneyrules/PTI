@@ -118,7 +118,8 @@ class AlertManager(
             val alert = AlertEvent(
                 type = type,
                 location = location,
-                message = message ?: defaultMessage(type)
+                message = message ?: defaultMessage(type),
+                workerName = settings.workerName
             )
 
             Log.i(tag, "ALERTE DÉCLENCHÉE : $type")

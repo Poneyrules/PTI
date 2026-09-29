@@ -23,6 +23,8 @@ data class MainUiState(
     val isNetworkAvailable: Boolean = true,
     val timeSinceLastActivityMs: Long = 0L,
     val showSosConfirmation: Boolean = false,
+    val showWorkerNameDialog: Boolean = false,
+    val workerName: String = "",
     val missingPermissions: List<String> = emptyList(),
     val permissionBlocked: Boolean = false
 )
@@ -54,6 +56,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         observeState()
         checkPermissions()
+        loadWorkerName()
+    }
+
+    private fun loadWorkerName() {
+        viewModelScope.launch {
+            val name = app.settingsManager.getSettings().workerName.orEmpty()
+            _uiState.value = _uiState.value.copy(workerName = name)
+        }
     }
 
     private fun observeState() {
@@ -94,6 +104,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /**
+     * Demande le nom du travailleur avant d'activer le PTI.
+     * Le nom est ensuite inclus dans tous les SMS d'alerte.
+     */
     fun activatePti() {
         checkPermissions()
         if (!PermissionHelper.hasAllRequiredPermissions(getApplication())) {
@@ -101,9 +115,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = _uiState.value.copy(permissionBlocked = true)
             return
         }
-        Log.i("MainViewModel", "Démarrage du service PTI…")
-        // Démarre le Foreground Service (qui appellera ptiManager.activate())
-        PtiForegroundService.start(getApplication())
+        viewModelScope.launch {
+            val saved = app.settingsManager.getSettings().workerName.orEmpty()
+            _uiState.value = _uiState.value.copy(
+                workerName = saved,
+                showWorkerNameDialog = true
+            )
+        }
+    }
+
+    fun onWorkerNameChanged(name: String) {
+        _uiState.value = _uiState.value.copy(workerName = name)
+    }
+
+    fun dismissWorkerNameDialog() {
+        _uiState.value = _uiState.value.copy(showWorkerNameDialog = false)
+    }
+
+    /** Valide le nom, le sauvegarde, puis démarre le service PTI. */
+    fun confirmWorkerNameAndActivate() {
+        val name = _uiState.value.workerName.trim()
+        if (name.isBlank()) {
+            Log.w("MainViewModel", "Nom travailleur vide – activation refusée")
+            return
+        }
+        viewModelScope.launch {
+            app.settingsManager.setWorkerName(name)
+            _uiState.value = _uiState.value.copy(
+                workerName = name,
+                showWorkerNameDialog = false
+            )
+            Log.i("MainViewModel", "Démarrage du service PTI (travailleur=$name)…")
+            PtiForegroundService.start(getApplication())
+        }
     }
 
     fun deactivatePti() {

@@ -30,5 +30,7 @@ data class SettingsEntity(
     val alertRingtoneName: String? = null,
     /** Calibrage verticalité */
     val calibrationPitch: Float? = null,
-    val calibrationRoll: Float? = null
+    val calibrationRoll: Float? = null,
+    /** Nom du travailleur isolé (inclus dans les SMS d'alerte) */
+    val workerName: String? = null
 )

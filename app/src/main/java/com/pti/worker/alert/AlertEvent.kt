@@ -10,5 +10,6 @@ data class AlertEvent(
     val type: AlertType,
     val timestamp: Long = System.currentTimeMillis(),
     val location: PtiLocation? = null,
-    val message: String? = null
+    val message: String? = null,
+    val workerName: String? = null
 )

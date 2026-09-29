@@ -71,6 +71,10 @@ class SmsCommunicationManager(private val context: Context) : CommunicationManag
 
         return buildString {
             append("ALERTE PTI – $typeLabel\n")
+            val name = alert.workerName?.trim().orEmpty()
+            if (name.isNotEmpty()) {
+                append("Travailleur : $name\n")
+            }
             append("Heure : $timePart\n")
             if (locationPart != null && alert.location != null) {
                 append("Position : $locationPart\n")

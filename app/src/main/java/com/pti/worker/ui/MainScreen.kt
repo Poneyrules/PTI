@@ -159,6 +159,40 @@ fun MainScreen(
         )
     }
 
+    // Saisie du nom du travailleur à l'activation du PTI
+    if (uiState.showWorkerNameDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissWorkerNameDialog() },
+            title = { Text("Identification") },
+            text = {
+                Column {
+                    Text(
+                        "Indiquez le nom du travailleur isolé. " +
+                            "Il sera inclus dans les SMS d'alerte envoyés aux contacts d'urgence."
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = uiState.workerName,
+                        onValueChange = { viewModel.onWorkerNameChanged(it) },
+                        label = { Text("Nom du travailleur") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmWorkerNameAndActivate() },
+                    enabled = uiState.workerName.trim().isNotEmpty(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PtiGreen)
+                ) { Text("ACTIVER LE PTI") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissWorkerNameDialog() }) { Text("Annuler") }
+            }
+        )
+    }
+
     // Feedback si permissions manquantes
     if (uiState.permissionBlocked) {
         AlertDialog(
@@ -226,6 +260,15 @@ private fun InfoRow(uiState: MainUiState, viewModel: MainViewModel) {
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
         )
+        if (uiState.workerName.isNotBlank()) {
+            Text(
+                text = "Travailleur : ${uiState.workerName}",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        }
         Text(
             text = "Dernière activité : ${viewModel.formatDuration(uiState.timeSinceLastActivityMs)}",
             style = MaterialTheme.typography.bodyLarge,

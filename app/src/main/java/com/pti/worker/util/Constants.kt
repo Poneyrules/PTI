@@ -38,5 +38,5 @@ object Constants {
     }
 
     const val DATABASE_NAME = "pti_database"
-    const val DATABASE_VERSION = 1
+    const val DATABASE_VERSION = 2
 }

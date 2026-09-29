@@ -34,4 +34,9 @@ class SettingsManager(private val settingsDao: SettingsDao) {
         val current = getSettings()
         settingsDao.update(current.copy(orientationDetectionEnabled = enabled))
     }
+
+    suspend fun setWorkerName(name: String) {
+        val current = getSettings()
+        settingsDao.update(current.copy(workerName = name.trim().ifBlank { null }))
+    }
 }

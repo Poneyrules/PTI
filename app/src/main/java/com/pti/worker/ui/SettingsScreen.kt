@@ -45,7 +45,21 @@ fun SettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Text("Détections", style = MaterialTheme.typography.titleLarge)
+            Text("Travailleur", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = settings.workerName.orEmpty(),
+                onValueChange = {
+                    viewModel.updateSettings(settings.copy(workerName = it.ifBlank { null }))
+                },
+                label = { Text("Nom du travailleur isolé") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                supportingText = { Text("Inclus dans les SMS d'alerte") }
+            )
+            Spacer(Modifier.height(16.dp))
+
+                        Text("Détections", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             SwitchRow("Détection de chute", settings.fallDetectionEnabled) {
                 viewModel.setFallEnabled(it)
