@@ -180,10 +180,13 @@ class AlertManager(
 
     /**
      * Déclenche un appel téléphonique vers le contact d'urgence priorité 1,
-     * en haut-parleur, sans laisser l'appli Téléphone prendre le premier plan.
+     * en haut-parleur, et tente de garder l'UI PTI au premier plan.
      *
-     * Utilise TelecomManager.placeCall + EXTRA_START_CALL_WITH_SPEAKERPHONE,
-     * puis ramène immédiatement l'écran PTI au premier plan.
+     * Stratégie :
+     * 1. TelecomManager.placeCall + EXTRA_START_CALL_WITH_SPEAKERPHONE
+     * 2. Fallback ACTION_CALL
+     * 3. Forçage agressif du haut-parleur (surtout Samsung One UI)
+     * 4. Retour de l'écran PTI avec plusieurs tentatives + FullScreenIntent possible
      */
     private suspend fun callPriority1Contact() {
         val contact = contactManager.getPriority1Contact()
@@ -192,107 +195,116 @@ class AlertManager(
             eventRepository.logEvent("CALL_SKIPPED", "Aucun contact d'urgence")
             return
         }
+
         val hasPerm = ContextCompat.checkSelfPermission(
             context, Manifest.permission.CALL_PHONE
         ) == PackageManager.PERMISSION_GRANTED
+
         if (!hasPerm) {
             Log.e(tag, "Permission CALL_PHONE manquante")
             eventRepository.logEvent("CALL_FAILED", "Permission CALL_PHONE manquante")
             return
         }
+
         try {
-            // Coupe l'alarme pour laisser place à l'appel en haut-parleur
+            // Coupe l'alarme pour laisser place à l'appel
             stopAlarmSound()
             stopVibration()
 
             val phone = contact.phoneNumber.filter { it.isDigit() || it == '+' }
             val uri = Uri.fromParts("tel", phone, null)
 
-            // 1) Place l'appel via Telecom (HP demandé dès le départ, pas d'UI dialer classique)
             var placed = false
+
+            // ── 1. Tentative principale via TelecomManager ──────────────────────
             try {
                 val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
                 if (telecom != null) {
                     val extras = Bundle().apply {
                         putBoolean(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true)
+                        // Aide certains OEM (Samsung inclus)
+                        putBoolean("android.telecom.extra.START_CALL_WITH_SPEAKERPHONE", true)
                     }
                     telecom.placeCall(uri, extras)
                     placed = true
-                    Log.i(tag, "Appel TelecomManager placeCall HP vers $phone")
+                    Log.i(tag, "Appel TelecomManager.placeCall (HP demandé) → $phone")
                 }
             } catch (e: Exception) {
-                Log.w(tag, "TelecomManager.placeCall échec, fallback ACTION_CALL", e)
+                Log.w(tag, "TelecomManager.placeCall échec", e)
             }
 
-            // 2) Fallback si Telecom indisponible
+            // ── 2. Fallback ACTION_CALL ─────────────────────────────────────────
             if (!placed) {
                 val intent = Intent(Intent.ACTION_CALL).apply {
                     data = Uri.parse("tel:$phone")
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     putExtra(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true)
+                    putExtra("android.telecom.extra.START_CALL_WITH_SPEAKERPHONE", true)
                 }
                 context.startActivity(intent)
-                Log.i(tag, "Appel fallback ACTION_CALL vers $phone")
+                Log.i(tag, "Appel fallback ACTION_CALL → $phone")
             }
 
             eventRepository.logEvent(
                 "CALL_STARTED",
-                "Appel HP vers ${contact.name} (${contact.phoneNumber})"
+                "Appel vers ${contact.name} (${contact.phoneNumber})"
             )
 
-            // 3) Force HP + volume max (renforcé car certains OEM ignorent l'extra)
+            // ── 3. Forçage haut-parleur + volume ────────────────────────────────
             enableSpeakerphoneForCall()
 
-            // 4) Ramène l'app PTI au premier plan (l'UI Téléphone reste en arrière-plan)
+            // ── 4. Tentative de retour de l'UI PTI ───────────────────────────────
             bringPtiToForeground()
+
         } catch (e: Exception) {
             Log.e(tag, "Échec appel vers ${contact.phoneNumber}", e)
-            eventRepository.logEvent("CALL_FAILED", e.message)
+            eventRepository.logEvent("CALL_FAILED", e.message ?: "unknown")
         }
     }
 
-    /** Remet l'écran principal PTI au premier plan pendant l'appel d'alerte. */
+    /**
+     * Remet l'écran principal PTI au premier plan pendant l'appel d'alerte.
+     * Plusieurs tentatives + délais adaptés aux OEM lents (Samsung).
+     */
     private fun bringPtiToForeground() {
         scope.launch {
-            // Court délai pour laisser Telecom démarrer l'appel
-            delay(400)
-            try {
-                val intent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+            // Délais plus longs et plusieurs tentatives → meilleure chance face à One UI
+            val delays = listOf(600L, 1400L, 2500L, 4000L)
+
+            for ((index, delayMs) in delays.withIndex()) {
+                delay(delayMs)
+                try {
+                    val intent = Intent(context, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        // Aide à remonter l'activité même si le dialer est au-dessus
+                        addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+                    }
+                    context.startActivity(intent)
+                    Log.i(tag, "PTI ramené au premier plan (tentative ${index + 1})")
+                } catch (e: Exception) {
+                    Log.w(tag, "Échec bringToForeground tentative ${index + 1}", e)
                 }
-                context.startActivity(intent)
-                Log.i(tag, "PTI ramené au premier plan")
-            } catch (e: Exception) {
-                Log.w(tag, "Impossible de ramener PTI au premier plan", e)
             }
-            // Seconde tentative (OEM lents à afficher le dialer)
-            delay(800)
-            try {
-                val intent = Intent(context, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                }
-                context.startActivity(intent)
-            } catch (_: Exception) {}
         }
     }
 
     /**
      * Force le haut-parleur + volume max pendant l'appel d'urgence.
-     * - Écoute l'état téléphonique (OFFHOOK) pour activer au bon moment
-     * - Retente aussi à intervalles courts (certains constructeurs retardent l'audio)
-     * - Volume STREAM_VOICE_CALL porté au maximum
+     * Version renforcée pour Samsung One UI / Galaxy S20 FE et similaires.
+     *
+     * - Écoute CALL_STATE_OFFHOOK
+     * - Retries très fréquents les premières secondes
+     * - Utilise setCommunicationDevice (API 31+) + isSpeakerphoneOn
+     * - Volume STREAM_VOICE_CALL au maximum
      */
     private fun enableSpeakerphoneForCall() {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val telephonyManager =
             context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        // Mémorise le volume d'appel pour restauration en fin d'appel
         val previousCallVolume = try {
             audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
         } catch (_: Exception) {
@@ -302,64 +314,59 @@ class AlertManager(
         fun setMaxCallVolume() {
             try {
                 val maxCall = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
-                audioManager.setStreamVolume(
-                    AudioManager.STREAM_VOICE_CALL,
-                    maxCall,
-                    0 // pas de UI volume
-                )
-                // Certains appareils routent le HP sur MUSIC / SYSTEM en plus
-                try {
-                    val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                    // Ne force pas MUSIC au max pour ne pas casser le reste, seulement si très bas
-                    val curMusic = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                    if (curMusic < maxMusic / 2) {
-                        audioManager.setStreamVolume(
-                            AudioManager.STREAM_MUSIC,
-                            maxOf(curMusic, maxMusic * 3 / 4),
-                            0
-                        )
-                    }
-                } catch (_: Exception) {}
-                Log.i(tag, "Volume appel max ($maxCall)")
+                audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, maxCall, 0)
+
+                // Sur certains Samsung le volume musique influence aussi
+                val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val curMusic = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                if (curMusic < maxMusic * 0.8) {
+                    audioManager.setStreamVolume(
+                        AudioManager.STREAM_MUSIC,
+                        (maxMusic * 0.9).toInt(),
+                        0
+                    )
+                }
             } catch (e: Exception) {
-                Log.w(tag, "Impossible de maximiser le volume", e)
+                Log.w(tag, "Impossible de maxer le volume", e)
             }
         }
 
         fun setSpeakerOn() {
             try {
-                // Désactive le mode silencieux / ne pas déranger pour l'audio d'appel si possible
-                try {
-                    if (audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
-                        // ne force pas ringerMode (permission policy), on force seulement le stream appel
-                    }
-                } catch (_: Exception) {}
-
-                // MODE_IN_CALL puis IN_COMMUNICATION : selon OEM l'un ou l'autre route le HP
+                // 1. Modes audio classiques
                 try {
                     audioManager.mode = AudioManager.MODE_IN_CALL
                 } catch (_: Exception) {}
+
                 try {
                     audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
                 } catch (_: Exception) {}
 
+                // 2. Ancienne API (toujours utile sur Samsung)
                 @Suppress("DEPRECATION")
                 audioManager.isSpeakerphoneOn = true
 
+                // 3. API moderne (Android 12+)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val speaker = audioManager.availableCommunicationDevices
-                        .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    val devices = audioManager.availableCommunicationDevices
+                    val speaker = devices.firstOrNull {
+                        it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                    }
                     if (speaker != null) {
                         val ok = audioManager.setCommunicationDevice(speaker)
-                        Log.i(tag, "Haut-parleur setCommunicationDevice=$ok isSpeaker=${audioManager.isSpeakerphoneOn}")
+                        Log.i(tag, "setCommunicationDevice(SPEAKER) = $ok")
                     } else {
-                        Log.i(tag, "Pas de BUILTIN_SPEAKER listé – isSpeakerphoneOn forcé")
+                        Log.w(tag, "Aucun BUILTIN_SPEAKER trouvé")
                     }
                 }
 
-                // Volume max à chaque tentative (le système peut le baisser au décroché)
                 setMaxCallVolume()
-                Log.i(tag, "HP actif mode=${audioManager.mode} speaker=${audioManager.isSpeakerphoneOn}")
+
+                Log.i(
+                    tag,
+                    "HP forcé → mode=${audioManager.mode} " +
+                            "isSpeaker=${audioManager.isSpeakerphoneOn}"
+                )
             } catch (e: Exception) {
                 Log.w(tag, "Impossible d'activer le haut-parleur", e)
             }
@@ -373,6 +380,7 @@ class AlertManager(
                 @Suppress("DEPRECATION")
                 audioManager.isSpeakerphoneOn = false
                 audioManager.mode = AudioManager.MODE_NORMAL
+
                 if (previousCallVolume >= 0) {
                     audioManager.setStreamVolume(
                         AudioManager.STREAM_VOICE_CALL,
@@ -383,15 +391,21 @@ class AlertManager(
             } catch (_: Exception) {}
         }
 
-        // Tentatives périodiques pendant ~20 s (temps de décroché + stabilisation)
+        // ── Retries agressifs (surtout les 8 premières secondes) ───────────────
         scope.launch {
-            repeat(20) {
+            // Phase intensive
+            repeat(16) {          // 16 × 500 ms = 8 s
+                delay(500)
+                setSpeakerOn()
+            }
+            // Phase de maintien
+            repeat(12) {          // encore 12 s
                 delay(1000)
                 setSpeakerOn()
             }
         }
 
-        // Activation au passage en communication (plus fiable)
+        // ── Écoute de l'état téléphonique ──────────────────────────────────────
         try {
             val hasPhoneState = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.READ_PHONE_STATE
@@ -406,16 +420,26 @@ class AlertManager(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
                     override fun onCallStateChanged(state: Int) {
-                        if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-                            Log.i(tag, "Appel OFFHOOK → haut-parleur + volume max")
-                            setSpeakerOn()
-                            bringPtiToForeground()
-                        }
-                        if (state == TelephonyManager.CALL_STATE_IDLE) {
-                            try {
-                                telephonyManager.unregisterTelephonyCallback(this)
-                            } catch (_: Exception) {}
-                            restoreAudio()
+                        when (state) {
+                            TelephonyManager.CALL_STATE_OFFHOOK -> {
+                                Log.i(tag, "OFFHOOK → forçage HP + retour PTI")
+                                setSpeakerOn()
+                                // Petite attente puis on force encore
+                                scope.launch {
+                                    delay(300)
+                                    setSpeakerOn()
+                                    delay(700)
+                                    setSpeakerOn()
+                                }
+                                bringPtiToForeground()
+                            }
+                            TelephonyManager.CALL_STATE_IDLE -> {
+                                try {
+                                    telephonyManager.unregisterTelephonyCallback(this)
+                                } catch (_: Exception) {}
+                                restoreAudio()
+                                Log.i(tag, "Appel terminé → audio restauré")
+                            }
                         }
                     }
                 }
@@ -425,25 +449,35 @@ class AlertManager(
                 val listener = object : PhoneStateListener() {
                     @Deprecated("Deprecated in Java")
                     override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                        if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-                            Log.i(tag, "Appel OFFHOOK → haut-parleur + volume max")
-                            setSpeakerOn()
-                            bringPtiToForeground()
-                        }
-                        if (state == TelephonyManager.CALL_STATE_IDLE) {
-                            try {
-                                @Suppress("DEPRECATION")
-                                telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
-                            } catch (_: Exception) {}
-                            restoreAudio()
+                        when (state) {
+                            TelephonyManager.CALL_STATE_OFFHOOK -> {
+                                Log.i(tag, "OFFHOOK → forçage HP + retour PTI")
+                                setSpeakerOn()
+                                scope.launch {
+                                    delay(300)
+                                    setSpeakerOn()
+                                    delay(700)
+                                    setSpeakerOn()
+                                }
+                                bringPtiToForeground()
+                            }
+                            TelephonyManager.CALL_STATE_IDLE -> {
+                                try {
+                                    @Suppress("DEPRECATION")
+                                    telephonyManager.listen(this, PhoneStateListener.LISTEN_NONE)
+                                } catch (_: Exception) {}
+                                restoreAudio()
+                            }
                         }
                     }
                 }
                 @Suppress("DEPRECATION")
                 telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
             }
+
             // Première tentative immédiate
             setSpeakerOn()
+
         } catch (e: Exception) {
             Log.w(tag, "Écoute état appel impossible", e)
             setSpeakerOn()
