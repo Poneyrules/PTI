@@ -1,6 +1,11 @@
 package com.pti.worker.alert
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.Manifest
+import androidx.core.content.ContextCompat
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -136,6 +141,12 @@ class AlertManager(
                 Log.e(tag, "Échec envoi", result.exceptionOrNull())
                 eventRepository.logEvent("SMS_SEND_FAILED", result.exceptionOrNull()?.message)
             }
+
+            // Appel vocal vers contact priorité 1 pour immobilité et perte de verticalité
+            if (type == AlertType.IMMOBILITY || type == AlertType.ORIENTATION) {
+                callPriority1Contact()
+            }
+
             onAlertTriggered?.invoke(alert)
 
             // Fenêtre d'annulation pour SOS manuel
@@ -159,7 +170,44 @@ class AlertManager(
         }
     }
 
-    private fun defaultMessage(type: AlertType) = when (type) {
+    /**
+     * Déclenche un appel téléphonique vers le contact d'urgence priorité 1.
+     * Utilisé à l'issue de la pré-alerte pour immobilité et perte de verticalité.
+     */
+    private suspend fun callPriority1Contact() {
+        val contact = contactManager.getPriority1Contact()
+        if (contact == null) {
+            Log.w(tag, "Aucun contact priorité 1 pour l'appel")
+            eventRepository.logEvent("CALL_SKIPPED", "Aucun contact d'urgence")
+            return
+        }
+        val hasPerm = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CALL_PHONE
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPerm) {
+            Log.e(tag, "Permission CALL_PHONE manquante")
+            eventRepository.logEvent("CALL_FAILED", "Permission CALL_PHONE manquante")
+            return
+        }
+        try {
+            val phone = contact.phoneNumber.filter { it.isDigit() || it == '+' }
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:$phone")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            Log.i(tag, "Appel démarré vers ${contact.name} ($phone)")
+            eventRepository.logEvent(
+                "CALL_STARTED",
+                "Appel vers ${contact.name} (${contact.phoneNumber})"
+            )
+        } catch (e: Exception) {
+            Log.e(tag, "Échec appel vers ${contact.phoneNumber}", e)
+            eventRepository.logEvent("CALL_FAILED", e.message)
+        }
+    }
+
+        private fun defaultMessage(type: AlertType) = when (type) {
         AlertType.MANUAL_SOS -> "SOS manuel déclenché"
         AlertType.FALL -> "Chute détectée"
         AlertType.IMMOBILITY -> "Immobilité prolongée détectée"

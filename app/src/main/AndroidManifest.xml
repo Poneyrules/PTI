@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- Son d'alarme pré-alerte / SOS (volume alarme, même en mode silencieux partiel) -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 

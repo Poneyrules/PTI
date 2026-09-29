@@ -16,6 +16,7 @@ object PermissionHelper {
         add(Manifest.permission.VIBRATE)
         add(Manifest.permission.ACCESS_NETWORK_STATE)
         add(Manifest.permission.SEND_SMS)
+        add(Manifest.permission.CALL_PHONE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             add(Manifest.permission.ACTIVITY_RECOGNITION)
         }
@@ -45,6 +46,10 @@ object PermissionHelper {
 
     fun hasSmsPermission(context: Context): Boolean {
         return hasPermission(context, Manifest.permission.SEND_SMS)
+    }
+
+    fun hasCallPermission(context: Context): Boolean {
+        return hasPermission(context, Manifest.permission.CALL_PHONE)
     }
 
     fun shouldShowRationale(activity: Activity, permission: String): Boolean {

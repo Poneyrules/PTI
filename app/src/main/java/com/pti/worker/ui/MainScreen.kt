@@ -1,5 +1,6 @@
 package com.pti.worker.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,12 +11,15 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pti.worker.R
 import com.pti.worker.core.PtiState
 import com.pti.worker.ui.theme.*
 import com.pti.worker.ui.viewmodel.MainUiState
@@ -58,62 +62,82 @@ fun MainScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
         ) {
-            StatusCard(uiState)
-            Spacer(modifier = Modifier.height(16.dp))
-            InfoRow(uiState, viewModel)
-            Spacer(modifier = Modifier.height(24.dp))
-            MainActionButton(uiState, viewModel)
-            Spacer(modifier = Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                StatusCard(uiState)
+                Spacer(modifier = Modifier.height(16.dp))
+                InfoRow(uiState, viewModel)
+                Spacer(modifier = Modifier.height(24.dp))
+                MainActionButton(uiState, viewModel)
+                Spacer(modifier = Modifier.height(24.dp))
 
-            // Pendant pré-alerte : gros bouton d'acquittement (sans désactiver le PTI)
-            if (uiState.ptiState == PtiState.PRE_ALERT) {
-                Button(
-                    onClick = { viewModel.cancelAlert() },
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PtiGreen),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
+                // Pendant pré-alerte : gros bouton d'acquittement (sans désactiver le PTI)
+                if (uiState.ptiState == PtiState.PRE_ALERT) {
+                    Button(
+                        onClick = { viewModel.cancelAlert() },
+                        modifier = Modifier.fillMaxWidth().height(72.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PtiGreen),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            "JE SUIS OK — ANNULER",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "JE SUIS OK — ANNULER",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = Color.White
+                        "Pré-alerte en cours. Appuyez pour confirmer que vous allez bien.",
+                        textAlign = TextAlign.Center,
+                        color = PtiOrange,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                } else if (uiState.ptiState == PtiState.ALERT) {
+                    Button(
+                        onClick = { viewModel.cancelAlert() },
+                        modifier = Modifier.fillMaxWidth().height(72.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PtiOrange),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            "ACQUITTER L'ALERTE",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "Pré-alerte en cours. Appuyez pour confirmer que vous allez bien.",
-                    textAlign = TextAlign.Center,
-                    color = PtiOrange,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.fillMaxWidth()
+
+                // SOS toujours disponible (sauf pendant pré-alerte/alerte pour éviter confusion)
+                SosButton(
+                    enabled = uiState.ptiState != PtiState.PRE_ALERT && uiState.ptiState != PtiState.ALERT,
+                    onClick = { viewModel.requestSosConfirmation() }
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-            } else if (uiState.ptiState == PtiState.ALERT) {
-                Button(
-                    onClick = { viewModel.cancelAlert() },
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PtiOrange),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        "ACQUITTER L'ALERTE",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = Color.White
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // SOS toujours disponible (sauf pendant pré-alerte/alerte pour éviter confusion)
-            SosButton(
-                enabled = uiState.ptiState != PtiState.PRE_ALERT && uiState.ptiState != PtiState.ALERT,
-                onClick = { viewModel.requestSosConfirmation() }
+            // Logo PROCOMM-MMC en bas à droite
+            Image(
+                painter = painterResource(id = R.drawable.logo_procomm),
+                contentDescription = "PROCOMM-MMC",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 12.dp)
+                    .width(120.dp)
+                    .height(80.dp)
             )
         }
     }
