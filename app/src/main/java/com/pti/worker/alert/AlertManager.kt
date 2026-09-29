@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Bundle
+import android.telecom.TelecomManager
 import android.Manifest
 import androidx.core.content.ContextCompat
 import android.media.AudioAttributes
@@ -19,6 +21,7 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
+import com.pti.worker.MainActivity
 import com.pti.worker.communication.CommunicationManager
 import com.pti.worker.contact.ContactManager
 import com.pti.worker.data.repository.EventRepository
@@ -177,8 +180,10 @@ class AlertManager(
 
     /**
      * Déclenche un appel téléphonique vers le contact d'urgence priorité 1,
-     * forcé en haut-parleur pour que le travailleur isolé puisse communiquer
-     * sans tenir le téléphone.
+     * en haut-parleur, sans laisser l'appli Téléphone prendre le premier plan.
+     *
+     * Utilise TelecomManager.placeCall + EXTRA_START_CALL_WITH_SPEAKERPHONE,
+     * puis ramène immédiatement l'écran PTI au premier plan.
      */
     private suspend fun callPriority1Contact() {
         val contact = contactManager.getPriority1Contact()
@@ -201,22 +206,78 @@ class AlertManager(
             stopVibration()
 
             val phone = contact.phoneNumber.filter { it.isDigit() || it == '+' }
-            val intent = Intent(Intent.ACTION_CALL).apply {
-                data = Uri.parse("tel:$phone")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            val uri = Uri.fromParts("tel", phone, null)
+
+            // 1) Place l'appel via Telecom (HP demandé dès le départ, pas d'UI dialer classique)
+            var placed = false
+            try {
+                val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+                if (telecom != null) {
+                    val extras = Bundle().apply {
+                        putBoolean(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true)
+                    }
+                    telecom.placeCall(uri, extras)
+                    placed = true
+                    Log.i(tag, "Appel TelecomManager placeCall HP vers $phone")
+                }
+            } catch (e: Exception) {
+                Log.w(tag, "TelecomManager.placeCall échec, fallback ACTION_CALL", e)
             }
-            context.startActivity(intent)
-            Log.i(tag, "Appel démarré vers ${contact.name} ($phone)")
+
+            // 2) Fallback si Telecom indisponible
+            if (!placed) {
+                val intent = Intent(Intent.ACTION_CALL).apply {
+                    data = Uri.parse("tel:$phone")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    putExtra(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, true)
+                }
+                context.startActivity(intent)
+                Log.i(tag, "Appel fallback ACTION_CALL vers $phone")
+            }
+
             eventRepository.logEvent(
                 "CALL_STARTED",
                 "Appel HP vers ${contact.name} (${contact.phoneNumber})"
             )
 
-            // Active le haut-parleur dès que l'appel est en cours
+            // 3) Force HP + volume max (renforcé car certains OEM ignorent l'extra)
             enableSpeakerphoneForCall()
+
+            // 4) Ramène l'app PTI au premier plan (l'UI Téléphone reste en arrière-plan)
+            bringPtiToForeground()
         } catch (e: Exception) {
             Log.e(tag, "Échec appel vers ${contact.phoneNumber}", e)
             eventRepository.logEvent("CALL_FAILED", e.message)
+        }
+    }
+
+    /** Remet l'écran principal PTI au premier plan pendant l'appel d'alerte. */
+    private fun bringPtiToForeground() {
+        scope.launch {
+            // Court délai pour laisser Telecom démarrer l'appel
+            delay(400)
+            try {
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                context.startActivity(intent)
+                Log.i(tag, "PTI ramené au premier plan")
+            } catch (e: Exception) {
+                Log.w(tag, "Impossible de ramener PTI au premier plan", e)
+            }
+            // Seconde tentative (OEM lents à afficher le dialer)
+            delay(800)
+            try {
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {}
         }
     }
 
@@ -267,28 +328,38 @@ class AlertManager(
 
         fun setSpeakerOn() {
             try {
-                // Mode communication : meilleure compatibilité HP sur beaucoup de devices
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                // Désactive le mode silencieux / ne pas déranger pour l'audio d'appel si possible
+                try {
+                    if (audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL) {
+                        // ne force pas ringerMode (permission policy), on force seulement le stream appel
+                    }
+                } catch (_: Exception) {}
+
+                // MODE_IN_CALL puis IN_COMMUNICATION : selon OEM l'un ou l'autre route le HP
+                try {
+                    audioManager.mode = AudioManager.MODE_IN_CALL
+                } catch (_: Exception) {}
+                try {
+                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                } catch (_: Exception) {}
+
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = true
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     val speaker = audioManager.availableCommunicationDevices
                         .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                     if (speaker != null) {
                         val ok = audioManager.setCommunicationDevice(speaker)
-                        Log.i(tag, "Haut-parleur API31+ : $ok")
+                        Log.i(tag, "Haut-parleur setCommunicationDevice=$ok isSpeaker=${audioManager.isSpeakerphoneOn}")
                     } else {
-                        @Suppress("DEPRECATION")
-                        audioManager.isSpeakerphoneOn = true
-                        Log.i(tag, "Haut-parleur fallback isSpeakerphoneOn")
+                        Log.i(tag, "Pas de BUILTIN_SPEAKER listé – isSpeakerphoneOn forcé")
                     }
-                } else {
-                    @Suppress("DEPRECATION")
-                    audioManager.isSpeakerphoneOn = true
-                    Log.i(tag, "Haut-parleur activé (MODE_IN_COMMUNICATION)")
                 }
 
                 // Volume max à chaque tentative (le système peut le baisser au décroché)
                 setMaxCallVolume()
+                Log.i(tag, "HP actif mode=${audioManager.mode} speaker=${audioManager.isSpeakerphoneOn}")
             } catch (e: Exception) {
                 Log.w(tag, "Impossible d'activer le haut-parleur", e)
             }
@@ -338,6 +409,7 @@ class AlertManager(
                         if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
                             Log.i(tag, "Appel OFFHOOK → haut-parleur + volume max")
                             setSpeakerOn()
+                            bringPtiToForeground()
                         }
                         if (state == TelephonyManager.CALL_STATE_IDLE) {
                             try {
@@ -356,6 +428,7 @@ class AlertManager(
                         if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
                             Log.i(tag, "Appel OFFHOOK → haut-parleur + volume max")
                             setSpeakerOn()
+                            bringPtiToForeground()
                         }
                         if (state == TelephonyManager.CALL_STATE_IDLE) {
                             try {
