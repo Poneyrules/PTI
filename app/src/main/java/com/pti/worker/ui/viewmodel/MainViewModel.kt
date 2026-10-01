@@ -26,7 +26,8 @@ data class MainUiState(
     val showWorkerNameDialog: Boolean = false,
     val workerName: String = "",
     val missingPermissions: List<String> = emptyList(),
-    val permissionBlocked: Boolean = false
+    val permissionBlocked: Boolean = false,
+    val coverageMessage: String? = null
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -34,6 +35,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as PtiApplication
     private val ptiManager = app.ptiManager
     private val locationManager = app.locationManager
+    private val smsManager = com.pti.worker.communication.SmsCommunicationManager(application)
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
@@ -166,6 +168,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun confirmSos() {
         _uiState.value = _uiState.value.copy(showSosConfirmation = false)
         PtiForegroundService.sendSos(getApplication())
+    }
+
+    fun sendCoverageStatus(floor: Int, durationMinutes: Int) {
+        _uiState.value = _uiState.value.copy(coverageMessage = "Envoi du SMS…")
+        viewModelScope.launch {
+            val contact = app.contactManager.getPriority1Contact()
+            val result = if (contact == null) {
+                Result.failure(IllegalStateException("Aucun contact actif de priorité 1"))
+            } else {
+                smsManager.sendCoverageStatus(contact, floor, durationMinutes)
+            }
+            _uiState.value = _uiState.value.copy(
+                coverageMessage = result.fold(
+                    { "SMS envoyé au contact de priorité 1 (${floor}_${durationMinutes})." },
+                    { "Échec de l'envoi : ${it.message ?: "vérifiez les permissions SMS et le contact prioritaire."}" }
+                )
+            )
+        }
+    }
+
+    fun clearCoverageMessage() {
+        _uiState.value = _uiState.value.copy(coverageMessage = null)
     }
 
     fun cancelAlert() {

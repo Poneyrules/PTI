@@ -22,6 +22,24 @@ class SmsCommunicationManager(private val context: Context) : CommunicationManag
 
     private val tag = "SmsCommunication"
 
+    suspend fun sendCoverageStatus(contact: ContactEntity, floor: Int, durationMinutes: Int): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            if (!hasSmsPermission()) {
+                return@withContext Result.failure(SecurityException("Permission SEND_SMS non accordée"))
+            }
+            if (floor !in -2..-1 || durationMinutes !in 0..60) {
+                return@withContext Result.failure(IllegalArgumentException("Niveau ou durée invalide"))
+            }
+            try {
+                sendSms(getSmsManager(), contact.phoneNumber, "${floor}_${durationMinutes}")
+                Log.i(tag, "SMS hors couverture envoyé au contact de priorité 1")
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Log.e(tag, "Échec SMS hors couverture", e)
+                Result.failure(e)
+            }
+        }
+
     override suspend fun sendAlert(
         alert: AlertEvent,
         contacts: List<ContactEntity>

@@ -35,6 +35,9 @@ fun MainScreen(
     onNavigateDiagnostic: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showCoverageDialog by remember { mutableStateOf(false) }
+    var selectedFloor by remember { mutableStateOf<Int?>(null) }
+    var durationExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -79,6 +82,11 @@ fun MainScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 MainActionButton(uiState, viewModel)
                 Spacer(modifier = Modifier.height(24.dp))
+                OutlinedButton(
+                    onClick = { selectedFloor = null; showCoverageDialog = true },
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) { Text("HORS COUVERTURE", fontWeight = FontWeight.Bold) }
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Pendant pré-alerte : gros bouton d'acquittement (sans désactiver le PTI)
                 if (uiState.ptiState == PtiState.PRE_ALERT) {
@@ -156,6 +164,60 @@ fun MainScreen(
             dismissButton = {
                 TextButton(onClick = { viewModel.dismissSosConfirmation() }) { Text("Annuler") }
             }
+        )
+    }
+
+    if (showCoverageDialog) {
+        AlertDialog(
+            onDismissRequest = { showCoverageDialog = false },
+            title = { Text("Mode hors couverture") },
+            text = {
+                Column {
+                    Text(if (selectedFloor == null) "Sélectionnez le niveau" else "Niveau sélectionné : $selectedFloor")
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(-1, -2).forEach { floor ->
+                            OutlinedButton(onClick = { selectedFloor = floor }) { Text("Niveau $floor") }
+                        }
+                    }
+                    if (selectedFloor != null) {
+                        Spacer(Modifier.height(12.dp))
+                        Box {
+                            OutlinedButton(onClick = { durationExpanded = true }) {
+                                Text("Choisir la durée (0–60 min)")
+                            }
+                            DropdownMenu(
+                                expanded = durationExpanded,
+                                onDismissRequest = { durationExpanded = false },
+                                modifier = Modifier.heightIn(max = 320.dp)
+                            ) {
+                                (0..60).forEach { minutes ->
+                                    DropdownMenuItem(
+                                        text = { Text("$minutes min") },
+                                        onClick = {
+                                            durationExpanded = false
+                                            showCoverageDialog = false
+                                            viewModel.sendCoverageStatus(selectedFloor!!, minutes)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        Text("Le SMS sera envoyé au contact actif de priorité 1.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showCoverageDialog = false }) { Text("Annuler") } }
+        )
+    }
+
+    uiState.coverageMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearCoverageMessage() },
+            title = { Text("Hors couverture") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { viewModel.clearCoverageMessage() }) { Text("OK") } }
         )
     }
 

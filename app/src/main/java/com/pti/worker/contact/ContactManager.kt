@@ -10,9 +10,9 @@ class ContactManager(private val contactRepository: ContactRepository) {
 
     suspend fun getEnabledContacts(): List<ContactEntity> = contactRepository.getEnabledContacts()
 
-    /** Contact d'urgence de priorité la plus haute (priority ASC, 1 = premier). */
+    /** Contact d'urgence actif de priorité 1. */
     suspend fun getPriority1Contact(): ContactEntity? =
-        getEnabledContacts().minByOrNull { it.priority }
+        getEnabledContacts().filter { it.priority == 1 }.minByOrNull { it.id }
 
     suspend fun addContact(name: String, phoneNumber: String, priority: Int = 1): Long {
         return contactRepository.addContact(

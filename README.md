@@ -6,6 +6,7 @@ Application de **Protection du Travailleur Isolé (PTI)** pour smartphone Androi
 
 - Activation / désactivation du mode PTI
 - Bouton SOS manuel avec confirmation
+- Mode hors couverture : choix du niveau (-1/-2) et d'une durée (0–60 min), puis SMS au contact d'urgence prioritaire
 - Détection de chute (accéléromètre + gyroscope)
 - Détection d'immobilité prolongée
 - Détection de perte de verticalité
