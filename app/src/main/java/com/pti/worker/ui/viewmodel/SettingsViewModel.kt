@@ -26,6 +26,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         (application as PtiApplication).database.settingsDao()
     )
     private val contactManager = ContactManager((application as PtiApplication).contactRepository)
+    val sipConnectionState = (application as PtiApplication).sipClient.connectionState
     private val _sipImportStatus = MutableStateFlow<String?>(null)
     val sipImportStatus = _sipImportStatus.asStateFlow()
 
@@ -77,16 +78,42 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun parseContacts(body: String): List<Triple<String, String, Int>> {
-        val root = body.trim().let { if (it.startsWith("[")) JSONArray(it) else JSONObject(it).optJSONArray("contacts")
-            ?: JSONObject(it).optJSONArray("data") ?: JSONArray() }
+        val json = body.trim()
+        val root = if (json.startsWith("[")) {
+            JSONArray(json)
+        } else {
+            val objectRoot = JSONObject(json)
+            val array = listOf("contacts", "data", "phonebook", "results", "entries")
+                .firstNotNullOfOrNull { key ->
+                    objectRoot.optJSONArray(key)
+                        ?: objectRoot.optJSONObject(key)?.let { nested ->
+                            JSONArray().also { values ->
+                                nested.keys().forEach { childKey -> values.put(nested.opt(childKey)) }
+                            }
+                        }
+                }
+            array ?: JSONArray().also { values ->
+                objectRoot.keys().forEach { key ->
+                    objectRoot.optJSONObject(key)?.let(values::put)
+                }
+            }
+        }
         return buildList {
             for (i in 0 until root.length()) {
                 val item = root.optJSONObject(i) ?: continue
-                val name = item.optString("name", item.optString("displayName", "")).trim()
-                val address = listOf("sipUri", "sip", "uri", "phoneNumber", "phone", "mobile")
+                val firstName = listOf("firstName", "prenom")
+                    .firstNotNullOfOrNull { item.optString(it).trim().takeIf { value -> value.isNotBlank() && value != "null" } }
+                    .orEmpty()
+                val lastName = listOf("lastName", "nom")
+                    .firstNotNullOfOrNull { item.optString(it).trim().takeIf { value -> value.isNotBlank() && value != "null" } }
+                    .orEmpty()
+                val name = listOf("name", "displayName", "fullName", "label")
+                    .firstNotNullOfOrNull { item.optString(it).trim().takeIf { value -> value.isNotBlank() && value != "null" } }
+                    .orEmpty().ifBlank { listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ") }
+                val address = listOf("sipUri", "sip", "uri", "phoneNumber", "phone", "mobile", "number", "telephone", "tel", "extension", "username", "numero", "poste")
                     .firstNotNullOfOrNull { key -> item.optString(key).trim().takeIf { it.isNotBlank() && it != "null" } }
                 if (name.isNotBlank() && address != null) add(Triple(name, address, item.optInt("priority", 1).coerceAtLeast(1)))
             }
-        }.also { require(it.isNotEmpty()) { "Aucun contact reconnu (champs attendus : name et sipUri/phone/phoneNumber)" } }
+        }.also { require(it.isNotEmpty()) { "Aucun contact reconnu. Chaque contact doit contenir un nom (name/nom) et une adresse (sipUri/uri/phone/number/extension)." } }
     }
 }

@@ -21,6 +21,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,6 +39,7 @@ import com.pti.worker.ui.viewmodel.SettingsViewModel
 @Composable
 fun SipSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsState()
+    val sipState by viewModel.sipConnectionState.collectAsState()
     val importStatus by viewModel.sipImportStatus.collectAsState()
     var enabled by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
@@ -70,6 +73,24 @@ fun SipSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
         ) {
             Text("Compte SIP Linphone", style = MaterialTheme.typography.titleLarge)
             Text("Une connexion Internet (Wi-Fi ou données mobiles) reste nécessaire. Le SIP ne fonctionne pas sans réseau IP.")
+            val sipStateColor = when (sipState.status) {
+                com.pti.worker.communication.SipConnectionStatus.CONNECTED -> MaterialTheme.colorScheme.primary
+                com.pti.worker.communication.SipConnectionStatus.CONNECTING -> MaterialTheme.colorScheme.tertiary
+                com.pti.worker.communication.SipConnectionStatus.FAILED -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Text(
+                    text = "●  ${sipState.message}",
+                    color = sipStateColor,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+            Text("L'état passe à Connecté lorsque le serveur a accepté l'enregistrement du compte.", style = MaterialTheme.typography.bodySmall)
             androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Utiliser SIP pour les appels d'alerte", modifier = Modifier.weight(1f).padding(top = 12.dp))
                 Switch(checked = enabled, onCheckedChange = { enabled = it })
@@ -83,6 +104,7 @@ fun SipSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             Text("Répertoire distant", style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(contactsUrl, { contactsUrl = it }, label = { Text("Adresse du JSON des contacts") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Text("Formats acceptés : une liste JSON ou { \"contacts\": [...] }. Champs par contact : name et sipUri, sip, uri, phone ou phoneNumber.", style = MaterialTheme.typography.bodySmall)
+            Text("Une adresse HTTP locale est acceptée pour un répertoire sur le réseau local ; privilégiez HTTPS hors réseau de confiance.", style = MaterialTheme.typography.bodySmall)
             Button(
                 onClick = { viewModel.importSipContacts(contactsUrl) },
                 enabled = contactsUrl.isNotBlank(),

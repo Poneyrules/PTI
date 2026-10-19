@@ -18,6 +18,7 @@ Application de **Protection du Travailleur Isolé (PTI)** pour smartphone Androi
 - Restauration possible après redémarrage
 - Appels vocaux d'alerte via Linphone/SIP lorsque l'option SIP est activée
 - Import de contacts depuis une URL JSON
+- Indicateur d'état de l'enregistrement du compte SIP
 
 ## Prérequis
 
@@ -72,6 +73,7 @@ PtiManager + PtiStateMachine
 - SMS via SmsManager natif
 - SIP nécessite une connexion IP (Wi-Fi ou données mobiles), un compte SIP et un réseau joignable ; cela ne fonctionne pas hors de toute connectivité
 - Le JSON distant peut être une liste ou un objet avec `contacts`/`data`; chaque entrée utilise `name` et l'un de `sipUri`, `sip`, `uri`, `phoneNumber`, `phone` ou `mobile`. Les entrées importées sont ajoutées aux contacts existants.
+- Le trafic HTTP en clair est autorisé pour prendre en charge les répertoires locaux ; préférer HTTPS lorsque le serveur le permet.
 - La bibliothèque liblinphone est distribuée sous GPLv3 ; vérifier les obligations de licence avant toute distribution de l'application.
 - Tous les seuils sont configurables
 - Service START_STICKY + notification permanente

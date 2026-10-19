@@ -4,10 +4,14 @@ import android.content.Context
 import android.util.Log
 import com.pti.worker.data.db.entities.SettingsEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import org.linphone.core.Account
 import org.linphone.core.Core
+import org.linphone.core.CoreListenerStub
 import org.linphone.core.Factory
+import org.linphone.core.RegistrationState
 
 /** Keeps the SIP registration alive while PTI is armed and places voice alerts through liblinphone. */
 class LinphoneSipClient(context: Context) {
@@ -15,6 +19,13 @@ class LinphoneSipClient(context: Context) {
     private var core: Core? = null
     private var account: Account? = null
     private var configuredSettings: SipAccountSettings? = null
+    private val _connectionState = MutableStateFlow(SipConnectionState())
+    val connectionState = _connectionState.asStateFlow()
+    private var coreListener: CoreListenerStub? = null
+
+    fun setDisabled() {
+        _connectionState.value = SipConnectionState(SipConnectionStatus.DISABLED, "SIP désactivé")
+    }
 
     suspend fun connect(settings: SettingsEntity): Result<Unit> = withContext(Dispatchers.Main) {
         runCatching {
@@ -25,11 +36,37 @@ class LinphoneSipClient(context: Context) {
             val accountSettings = SipAccountSettings(
                 settings.sipUsername, settings.sipPassword, settings.sipDomain, settings.sipServer
             )
-            if (configuredSettings == accountSettings && core != null) return@runCatching
+            val currentState = _connectionState.value.status
+            if (configuredSettings == accountSettings && core != null &&
+                currentState != SipConnectionStatus.FAILED && currentState != SipConnectionStatus.DISCONNECTED
+            ) return@runCatching
 
             disconnectInternal()
+            _connectionState.value = SipConnectionState(SipConnectionStatus.CONNECTING, "Connexion au serveur SIP…")
             val factory = Factory.instance()
             val sipCore = factory.createCore(null, null, appContext)
+            val listener = object : CoreListenerStub() {
+                override fun onAccountRegistrationStateChanged(
+                    core: Core,
+                    account: Account,
+                    state: RegistrationState,
+                    message: String
+                ) {
+                    _connectionState.value = when (state) {
+                        RegistrationState.Ok -> SipConnectionState(SipConnectionStatus.CONNECTED, "Connecté au serveur SIP")
+                        RegistrationState.Progress, RegistrationState.Refreshing ->
+                            SipConnectionState(SipConnectionStatus.CONNECTING, "Enregistrement SIP en cours…")
+                        RegistrationState.Failed -> SipConnectionState(
+                            SipConnectionStatus.FAILED,
+                            message.ifBlank { "Échec de l'enregistrement SIP" }
+                        )
+                        RegistrationState.Cleared -> SipConnectionState(SipConnectionStatus.DISCONNECTED, "Compte SIP déconnecté")
+                        RegistrationState.None -> SipConnectionState(SipConnectionStatus.CONNECTING, "Initialisation du compte SIP…")
+                    }
+                }
+            }
+            sipCore.addListener(listener)
+            coreListener = listener
             val auth = factory.createAuthInfo(
                 settings.sipUsername, null, settings.sipPassword, null, null, settings.sipDomain
             )
@@ -49,7 +86,13 @@ class LinphoneSipClient(context: Context) {
             core = sipCore
             account = sipAccount
             configuredSettings = accountSettings
-        }.onFailure { Log.e(TAG, "Configuration SIP impossible", it) }
+        }.onFailure {
+            _connectionState.value = SipConnectionState(
+                SipConnectionStatus.FAILED,
+                it.message ?: "Configuration SIP impossible"
+            )
+            Log.e(TAG, "Configuration SIP impossible", it)
+        }
     }
 
     suspend fun call(destination: String, settings: SettingsEntity): Result<Unit> = withContext(Dispatchers.Main) {
@@ -71,12 +114,15 @@ class LinphoneSipClient(context: Context) {
         runCatching {
             core?.let { sipCore ->
                 account?.let(sipCore::removeAccount)
+                coreListener?.let(sipCore::removeListener)
                 sipCore.stop()
             }
         }.onFailure { Log.w(TAG, "Arrêt SIP incomplet", it) }
         core = null
         account = null
         configuredSettings = null
+        coreListener = null
+        setDisabled()
     }
 
     private fun normalizeServer(server: String): String {
@@ -93,3 +139,10 @@ class LinphoneSipClient(context: Context) {
 
     companion object { private const val TAG = "LinphoneSipClient" }
 }
+
+enum class SipConnectionStatus { DISABLED, DISCONNECTED, CONNECTING, CONNECTED, FAILED }
+
+data class SipConnectionState(
+    val status: SipConnectionStatus = SipConnectionStatus.DISABLED,
+    val message: String = "SIP désactivé"
+)
