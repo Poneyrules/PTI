@@ -45,8 +45,7 @@ class PtiManager(
 
 
     private val alertManager = AlertManager(
-        context, communicationManager, contactManager, locationManager,
-        sipClient,
+        context, communicationManager, contactManager, sipClient, locationManager,
         eventRepository, settingsManager, scope
     )
 
