@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.pti.worker.communication.SmsCommunicationManager
+import com.pti.worker.communication.LinphoneSipClient
 import com.pti.worker.contact.ContactManager
 import com.pti.worker.core.PtiManager
 import com.pti.worker.data.db.PtiDatabase
@@ -41,6 +42,8 @@ class PtiApplication : Application() {
         SettingsManager(database.settingsDao())
     }
 
+    val sipClient: LinphoneSipClient by lazy { LinphoneSipClient(this) }
+
     val contactManager: ContactManager by lazy {
         ContactManager(contactRepository)
     }
@@ -53,6 +56,7 @@ class PtiApplication : Application() {
             eventRepository = eventRepository,
             contactManager = contactManager,
             communicationManager = SmsCommunicationManager(this),
+            sipClient = sipClient,
             locationManager = locationManager,
             networkMonitor = networkMonitor
         )

@@ -32,5 +32,11 @@ data class SettingsEntity(
     val calibrationPitch: Float? = null,
     val calibrationRoll: Float? = null,
     /** Nom du travailleur isolé (inclus dans les SMS d'alerte) */
-    val workerName: String? = null
+    val workerName: String? = null,
+    val sipEnabled: Boolean = false,
+    val sipUsername: String = "",
+    val sipPassword: String = "",
+    val sipDomain: String = "",
+    val sipServer: String = "",
+    val sipContactsUrl: String = ""
 )

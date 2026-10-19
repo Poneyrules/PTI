@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.pti.worker.data.db.entities.ContactEntity
 import com.pti.worker.data.db.entities.EventEntity
@@ -25,6 +26,17 @@ abstract class PtiDatabase : RoomDatabase() {
     abstract fun settingsDao(): SettingsDao
 
     companion object {
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE settings ADD COLUMN sipEnabled INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE settings ADD COLUMN sipUsername TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE settings ADD COLUMN sipPassword TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE settings ADD COLUMN sipDomain TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE settings ADD COLUMN sipServer TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE settings ADD COLUMN sipContactsUrl TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile
         private var INSTANCE: PtiDatabase? = null
 
@@ -35,6 +47,7 @@ abstract class PtiDatabase : RoomDatabase() {
                     PtiDatabase::class.java,
                     Constants.DATABASE_NAME
                 )
+                    .addMigrations(MIGRATION_2_3)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

@@ -73,7 +73,10 @@ class PtiForegroundService : Service() {
                 Constants.NOTIFICATION_ID,
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH or
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                    } else 0)
             )
         } else {
             startForeground(Constants.NOTIFICATION_ID, notification)

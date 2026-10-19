@@ -21,7 +21,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
     onPickRingtone: () -> Unit = {},
-    onNavigateCalibration: () -> Unit = {}
+    onNavigateCalibration: () -> Unit = {},
+    onNavigateSip: () -> Unit = {}
 ) {
     val settings by viewModel.settings.collectAsState()
     val context = LocalContext.current
@@ -152,6 +153,12 @@ fun SettingsScreen(
                 enabled = settings.alertRingtoneUri != null
             ) {
                 Text("Réinitialiser la sonnerie")
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Text("Communication", style = MaterialTheme.typography.titleLarge)
+            OutlinedButton(onClick = onNavigateSip, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Text("Téléphonie SIP et contacts JSON")
             }
 
             Spacer(Modifier.height(24.dp))

@@ -84,7 +84,14 @@ class MainActivity : ComponentActivity() {
                             viewModel = settingsViewModel,
                             onBack = { navController.popBackStack() },
                             onPickRingtone = { openRingtonePicker() },
-                            onNavigateCalibration = { navController.navigate("calibration") }
+                            onNavigateCalibration = { navController.navigate("calibration") },
+                            onNavigateSip = { navController.navigate("sip") }
+                        )
+                    }
+                    composable("sip") {
+                        SipSettingsScreen(
+                            viewModel = settingsViewModel,
+                            onBack = { navController.popBackStack() }
                         )
                     }
                     composable("contacts") {

@@ -1,0 +1,111 @@
+package com.pti.worker.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import com.pti.worker.ui.viewmodel.SettingsViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SipSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsState()
+    val importStatus by viewModel.sipImportStatus.collectAsState()
+    var enabled by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var domain by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf("") }
+    var contactsUrl by remember { mutableStateOf("") }
+
+    LaunchedEffect(settings) {
+        enabled = settings.sipEnabled
+        username = settings.sipUsername
+        password = settings.sipPassword
+        domain = settings.sipDomain
+        server = settings.sipServer
+        contactsUrl = settings.sipContactsUrl
+    }
+
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text("Communication SIP") },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                }
+            }
+        )
+    }) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text("Compte SIP Linphone", style = MaterialTheme.typography.titleLarge)
+            Text("Une connexion Internet (Wi-Fi ou données mobiles) reste nécessaire. Le SIP ne fonctionne pas sans réseau IP.")
+            androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Utiliser SIP pour les appels d'alerte", modifier = Modifier.weight(1f).padding(top = 12.dp))
+                Switch(checked = enabled, onCheckedChange = { enabled = it })
+            }
+            OutlinedTextField(username, { username = it }, label = { Text("Identifiant SIP") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(password, { password = it }, label = { Text("Mot de passe SIP") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(domain, { domain = it }, label = { Text("Domaine SIP (ex. sip.exemple.fr)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(server, { server = it }, label = { Text("Serveur / proxy SIP (ex. sip:sip.exemple.fr:5060)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+            Spacer(Modifier.height(8.dp))
+            Text("Répertoire distant", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(contactsUrl, { contactsUrl = it }, label = { Text("Adresse du JSON des contacts") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text("Formats acceptés : une liste JSON ou { \"contacts\": [...] }. Champs par contact : name et sipUri, sip, uri, phone ou phoneNumber.", style = MaterialTheme.typography.bodySmall)
+            Button(
+                onClick = { viewModel.importSipContacts(contactsUrl) },
+                enabled = contactsUrl.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Importer les contacts") }
+            importStatus?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    viewModel.updateSettings(settings.copy(
+                        sipEnabled = enabled,
+                        sipUsername = username.trim(),
+                        sipPassword = password,
+                        sipDomain = domain.trim(),
+                        sipServer = server.trim(),
+                        sipContactsUrl = contactsUrl.trim()
+                    ))
+                    onBack()
+                },
+                enabled = !enabled || (username.isNotBlank() && domain.isNotBlank() && server.isNotBlank()),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Enregistrer") }
+        }
+    }
+}

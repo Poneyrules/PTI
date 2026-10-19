@@ -23,6 +23,7 @@ import android.telephony.TelephonyManager
 import android.util.Log
 import com.pti.worker.MainActivity
 import com.pti.worker.communication.CommunicationManager
+import com.pti.worker.communication.LinphoneSipClient
 import com.pti.worker.contact.ContactManager
 import com.pti.worker.data.repository.EventRepository
 import com.pti.worker.location.PtiLocationManager
@@ -36,6 +37,7 @@ class AlertManager(
     private val context: Context,
     private val communicationManager: CommunicationManager,
     private val contactManager: ContactManager,
+    private val sipClient: LinphoneSipClient,
     private val locationManager: PtiLocationManager,
     private val eventRepository: EventRepository,
     private val settingsManager: SettingsManager,
@@ -150,8 +152,9 @@ class AlertManager(
                 eventRepository.logEvent("SMS_SEND_FAILED", result.exceptionOrNull()?.message)
             }
 
-            // Appel vocal vers contact priorité 1 pour immobilité et perte de verticalité
-            if (type == AlertType.IMMOBILITY || type == AlertType.ORIENTATION) {
+            // SIP est le canal voix de secours pour tout type d'alerte. Sans SIP,
+            // l'appel téléphonique classique reste limité aux alertes immobilité/verticalité.
+            if (settings.sipEnabled || type == AlertType.IMMOBILITY || type == AlertType.ORIENTATION) {
                 callPriority1Contact()
             }
 
@@ -189,10 +192,24 @@ class AlertManager(
      * 4. Retour de l'écran PTI avec plusieurs tentatives + FullScreenIntent possible
      */
     private suspend fun callPriority1Contact() {
+        val settings = settingsManager.getSettings()
         val contact = contactManager.getPriority1Contact()
         if (contact == null) {
             Log.w(tag, "Aucun contact priorité 1 pour l'appel")
             eventRepository.logEvent("CALL_SKIPPED", "Aucun contact d'urgence")
+            return
+        }
+
+        if (settings.sipEnabled) {
+            stopAlarmSound()
+            stopVibration()
+            val result = sipClient.call(contact.phoneNumber, settings)
+            if (result.isSuccess) {
+                eventRepository.logEvent("SIP_CALL_STARTED", "Appel SIP vers ${contact.name} (${contact.phoneNumber})")
+            } else {
+                Log.e(tag, "Échec de l'appel SIP", result.exceptionOrNull())
+                eventRepository.logEvent("SIP_CALL_FAILED", result.exceptionOrNull()?.message)
+            }
             return
         }
 

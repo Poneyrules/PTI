@@ -5,6 +5,7 @@ import android.util.Log
 import com.pti.worker.alert.AlertManager
 import com.pti.worker.alert.AlertType
 import com.pti.worker.communication.CommunicationManager
+import com.pti.worker.communication.LinphoneSipClient
 import com.pti.worker.contact.ContactManager
 import com.pti.worker.data.repository.EventRepository
 import com.pti.worker.detection.FallDetectionManager
@@ -29,6 +30,7 @@ class PtiManager(
     private val eventRepository: EventRepository,
     private val contactManager: ContactManager,
     private val communicationManager: CommunicationManager,
+    private val sipClient: LinphoneSipClient,
     private val locationManager: PtiLocationManager,
     private val networkMonitor: NetworkMonitor
 ) {
@@ -44,6 +46,7 @@ class PtiManager(
 
     private val alertManager = AlertManager(
         context, communicationManager, contactManager, locationManager,
+        sipClient,
         eventRepository, settingsManager, scope
     )
 
@@ -58,6 +61,12 @@ class PtiManager(
     val isNetworkAvailable: StateFlow<Boolean> = _isNetworkAvailable.asStateFlow()
 
     init {
+        scope.launch {
+            settingsManager.settingsFlow.collectLatest { settings ->
+                if (settings.sipEnabled) sipClient.connect(settings)
+                else sipClient.disconnect()
+            }
+        }
         setupDetections()
         setupAlertCallbacks()
         observeNetwork()
