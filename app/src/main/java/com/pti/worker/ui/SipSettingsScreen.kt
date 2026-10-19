@@ -123,9 +123,7 @@ fun SipSettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                         sipServer = server.trim(),
                         sipContactsUrl = contactsUrl.trim()
                     ))
-                    onBack()
                 },
-                enabled = !enabled || (username.isNotBlank() && domain.isNotBlank() && server.isNotBlank()),
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Enregistrer") }
         }

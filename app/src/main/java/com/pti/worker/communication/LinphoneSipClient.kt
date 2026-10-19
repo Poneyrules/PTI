@@ -31,10 +31,10 @@ class LinphoneSipClient(context: Context) {
         runCatching {
             require(settings.sipUsername.isNotBlank()) { "Identifiant SIP manquant" }
             require(settings.sipDomain.isNotBlank()) { "Domaine SIP manquant" }
-            require(settings.sipServer.isNotBlank()) { "Serveur SIP manquant" }
+            val server = settings.sipServer.ifBlank { settings.sipDomain }
             val identity = "sip:${settings.sipUsername}@${settings.sipDomain}"
             val accountSettings = SipAccountSettings(
-                settings.sipUsername, settings.sipPassword, settings.sipDomain, settings.sipServer
+                settings.sipUsername, settings.sipPassword, settings.sipDomain, server
             )
             val currentState = _connectionState.value.status
             if (configuredSettings == accountSettings && core != null &&
@@ -74,7 +74,7 @@ class LinphoneSipClient(context: Context) {
             val params = sipCore.createAccountParams()
             val identityAddress = factory.createAddress(identity)
                 ?: error("Identité SIP invalide")
-            val serverAddress = factory.createAddress(normalizeServer(settings.sipServer))
+            val serverAddress = factory.createAddress(normalizeServer(server))
                 ?: error("Adresse du serveur SIP invalide")
             check(params.setIdentityAddress(identityAddress) == 0) { "Identité SIP invalide" }
             check(params.setServerAddress(serverAddress) == 0) { "Serveur SIP invalide" }
