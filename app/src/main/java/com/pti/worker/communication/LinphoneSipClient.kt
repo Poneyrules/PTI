@@ -1,6 +1,8 @@
 package com.pti.worker.communication
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.pti.worker.data.db.entities.SettingsEntity
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +25,19 @@ class LinphoneSipClient(context: Context) {
     private var account: Account? = null
     private var accountIdentity: Address? = null
     private var configuredSettings: SipAccountSettings? = null
+    private val iterateHandler = Handler(Looper.getMainLooper())
+    private val iterateTask = object : Runnable {
+        override fun run() {
+            val activeCore = core ?: return
+            try {
+                activeCore.iterate()
+            } catch (error: Exception) {
+                Log.w(TAG, "Erreur pendant le traitement des événements SIP", error)
+            } finally {
+                if (core === activeCore) iterateHandler.postDelayed(this, ITERATE_INTERVAL_MS)
+            }
+        }
+    }
     private val _connectionState = MutableStateFlow(SipConnectionState())
     val connectionState = _connectionState.asStateFlow()
     private var coreListener: CoreListenerStub? = null
@@ -99,6 +114,8 @@ class LinphoneSipClient(context: Context) {
             account = sipAccount
             accountIdentity = identityAddress
             configuredSettings = accountSettings
+            iterateHandler.removeCallbacks(iterateTask)
+            iterateHandler.post(iterateTask)
         }.onFailure {
             _connectionState.value = SipConnectionState(
                 SipConnectionStatus.FAILED,
@@ -152,6 +169,7 @@ class LinphoneSipClient(context: Context) {
     suspend fun disconnect() = withContext(Dispatchers.Main) { disconnectInternal() }
 
     private fun disconnectInternal() {
+        iterateHandler.removeCallbacks(iterateTask)
         runCatching {
             core?.let { sipCore ->
                 account?.let(sipCore::removeAccount)
@@ -181,6 +199,7 @@ class LinphoneSipClient(context: Context) {
 
     companion object {
         private const val TAG = "LinphoneSipClient"
+        private const val ITERATE_INTERVAL_MS = 20L
 
         fun isOwnAccountDestination(destination: String, settings: SettingsEntity): Boolean {
             val value = destination.trim()
