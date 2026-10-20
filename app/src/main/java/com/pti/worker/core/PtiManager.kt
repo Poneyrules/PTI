@@ -179,6 +179,7 @@ class PtiManager(
 
     fun cancelCurrentAlert() {
         Log.i(tag, "cancelCurrentAlert (état=${stateMachine.state.value}, armed=$ptiArmed)")
+        alertManager.stopActiveSipCall()
         // Arrêt son/vibration sans callback (on gère la transition d'état ici)
         alertManager.cancelPreAlert(notifyCancelled = false)
 

@@ -141,6 +141,14 @@ class LinphoneSipClient(context: Context) {
             }
         }
 
+    /** Terminates every call owned by this Linphone core when the user acknowledges an alert. */
+    suspend fun terminateActiveCalls(): Result<Unit> = withContext(Dispatchers.Main) {
+        runCatching {
+            core?.terminateAllCalls()
+            Unit
+        }.onFailure { Log.w(TAG, "Impossible de terminer l'appel SIP", it) }
+    }
+
     suspend fun disconnect() = withContext(Dispatchers.Main) { disconnectInternal() }
 
     private fun disconnectInternal() {

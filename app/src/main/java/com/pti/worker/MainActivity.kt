@@ -3,12 +3,17 @@ package com.pti.worker
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -18,6 +23,8 @@ import com.pti.worker.ui.viewmodel.ContactsViewModel
 import com.pti.worker.ui.viewmodel.MainViewModel
 import com.pti.worker.ui.viewmodel.SettingsViewModel
 import com.pti.worker.util.PermissionHelper
+import com.pti.worker.core.PtiState
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -59,7 +66,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        updateAlertWindowMode()
         enableEdgeToEdge()
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                (application as PtiApplication).ptiManager.stateMachine.state.collect {
+                    updateAlertWindowMode(it)
+                }
+            }
+        }
 
         val missing = PermissionHelper.missingPermissions(this)
         if (missing.isNotEmpty()) {
@@ -144,6 +160,28 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        updateAlertWindowMode()
         mainViewModel.checkPermissions()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        updateAlertWindowMode()
+    }
+
+    private fun updateAlertWindowMode(
+        state: PtiState = (application as PtiApplication).ptiManager.stateMachine.state.value
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            val showAlert = state == PtiState.PRE_ALERT || state == PtiState.ALERT
+            setShowWhenLocked(showAlert)
+            setTurnScreenOn(showAlert)
+            if (showAlert) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
 }

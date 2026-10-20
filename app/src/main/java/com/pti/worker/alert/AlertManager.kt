@@ -210,9 +210,22 @@ class AlertManager(
 
     fun acknowledgeAlert() {
         scope.launch {
+            terminateActiveSipCall()
             eventRepository.logEvent(type = "ACKNOWLEDGED", message = "Alerte acquittée")
             // Pas de callback : PtiManager.acknowledgeAlert gère la transition d'état
             cancelPreAlert(notifyCancelled = false)
+        }
+    }
+
+    fun stopActiveSipCall() {
+        scope.launch { terminateActiveSipCall() }
+    }
+
+    private suspend fun terminateActiveSipCall() {
+        val error = sipClient.terminateActiveCalls().exceptionOrNull()
+        if (error != null) {
+            Log.w(tag, "Échec de l'arrêt de l'appel SIP lors de l'acquittement", error)
+            eventRepository.logEvent("SIP_CALL_HANGUP_FAILED", error.message)
         }
     }
 
