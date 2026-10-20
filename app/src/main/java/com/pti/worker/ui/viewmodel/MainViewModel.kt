@@ -173,8 +173,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun sendCoverageStatus(floor: Int, durationMinutes: Int) {
         _uiState.value = _uiState.value.copy(coverageMessage = "Envoi en cours…")
         viewModelScope.launch {
-            val contact = app.contactManager.getPriority1Contact()
             val settings = app.settingsManager.getSettings()
+            val contact = app.contactManager.getPriority1Contact(settings)
             val result = if (floor !in -2..-1 || durationMinutes !in 0..60) {
                 Result.failure(IllegalArgumentException("Niveau ou durée invalide"))
             } else if (contact == null) {

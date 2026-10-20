@@ -1,6 +1,8 @@
 package com.pti.worker.contact
 
+import com.pti.worker.communication.LinphoneSipClient
 import com.pti.worker.data.db.entities.ContactEntity
+import com.pti.worker.data.db.entities.SettingsEntity
 import com.pti.worker.data.repository.ContactRepository
 import kotlinx.coroutines.flow.Flow
 
@@ -10,9 +12,15 @@ class ContactManager(private val contactRepository: ContactRepository) {
 
     suspend fun getEnabledContacts(): List<ContactEntity> = contactRepository.getEnabledContacts()
 
-    /** Contact d'urgence actif de priorité 1. */
-    suspend fun getPriority1Contact(): ContactEntity? =
-        getEnabledContacts().filter { it.priority == 1 }.minByOrNull { it.id }
+    /** Contact d'urgence actif de priorité 1, en excluant le compte SIP local. */
+    suspend fun getPriority1Contact(settings: SettingsEntity): ContactEntity? =
+        getEnabledContacts()
+            .asSequence()
+            .filter { it.priority == 1 }
+            .filterNot {
+                settings.sipEnabled && LinphoneSipClient.isOwnAccountDestination(it.phoneNumber, settings)
+            }
+            .minByOrNull { it.id }
 
     suspend fun addContact(name: String, phoneNumber: String, priority: Int = 1): Long {
         return contactRepository.addContact(

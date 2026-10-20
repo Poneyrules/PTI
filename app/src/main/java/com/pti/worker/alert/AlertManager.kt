@@ -228,7 +228,7 @@ class AlertManager(
      */
     private suspend fun callPriority1Contact() {
         val settings = settingsManager.getSettings()
-        val contact = contactManager.getPriority1Contact()
+        val contact = contactManager.getPriority1Contact(settings)
         if (contact == null) {
             Log.w(tag, "Aucun contact priorité 1 pour l'appel")
             eventRepository.logEvent("CALL_SKIPPED", "Aucun contact d'urgence")
