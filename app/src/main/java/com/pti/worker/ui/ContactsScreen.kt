@@ -13,12 +13,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pti.worker.data.db.entities.ContactEntity
+import com.pti.worker.communication.LinphoneSipClient
 import com.pti.worker.ui.viewmodel.ContactsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactsScreen(viewModel: ContactsViewModel, onBack: () -> Unit) {
     val contacts by viewModel.contacts.collectAsState()
+    val settings by viewModel.settings.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -42,6 +44,7 @@ fun ContactsScreen(viewModel: ContactsViewModel, onBack: () -> Unit) {
             items(contacts, key = { it.id }) { contact ->
                 ContactItem(
                     contact = contact,
+                    isSipAccount = LinphoneSipClient.isOwnAccountDestination(contact.phoneNumber, settings),
                     onToggle = { viewModel.toggleEnabled(contact) },
                     onDelete = { viewModel.deleteContact(contact) }
                 )
@@ -61,7 +64,7 @@ fun ContactsScreen(viewModel: ContactsViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ContactItem(contact: ContactEntity, onToggle: () -> Unit, onDelete: () -> Unit) {
+private fun ContactItem(contact: ContactEntity, isSipAccount: Boolean, onToggle: () -> Unit, onDelete: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -71,8 +74,9 @@ private fun ContactItem(contact: ContactEntity, onToggle: () -> Unit, onDelete: 
                 Text(contact.name, style = MaterialTheme.typography.titleLarge)
                 Text(contact.phoneNumber, style = MaterialTheme.typography.bodyLarge)
                 Text("Priorité : ${contact.priority}")
+                if (isSipAccount) Text("Compte SIP de cet appareil", style = MaterialTheme.typography.bodySmall)
             }
-            Switch(checked = contact.isEnabled, onCheckedChange = { onToggle() })
+            Switch(checked = contact.isEnabled, onCheckedChange = { onToggle() }, enabled = !isSipAccount)
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Supprimer")
             }

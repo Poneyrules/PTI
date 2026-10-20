@@ -171,18 +171,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendCoverageStatus(floor: Int, durationMinutes: Int) {
-        _uiState.value = _uiState.value.copy(coverageMessage = "Envoi du SMS…")
+        _uiState.value = _uiState.value.copy(coverageMessage = "Envoi en cours…")
         viewModelScope.launch {
             val contact = app.contactManager.getPriority1Contact()
-            val result = if (contact == null) {
+            val settings = app.settingsManager.getSettings()
+            val result = if (floor !in -2..-1 || durationMinutes !in 0..60) {
+                Result.failure(IllegalArgumentException("Niveau ou durée invalide"))
+            } else if (contact == null) {
                 Result.failure(IllegalStateException("Aucun contact actif de priorité 1"))
+            } else if (settings.sipEnabled) {
+                app.sipClient.sendMessage(
+                    contact.phoneNumber,
+                    com.pti.worker.communication.AlertMessageFormatter.formatCoverageStatus(floor, durationMinutes),
+                    settings
+                )
             } else {
                 smsManager.sendCoverageStatus(contact, floor, durationMinutes)
             }
             _uiState.value = _uiState.value.copy(
                 coverageMessage = result.fold(
-                    { "SMS envoyé au contact de priorité 1 (${floor}_${durationMinutes})." },
-                    { "Échec de l'envoi : ${it.message ?: "vérifiez les permissions SMS et le contact prioritaire."}" }
+                    { if (settings.sipEnabled) "Message SIP mis en file pour le contact prioritaire (${floor}_${durationMinutes})."
+                      else "SMS envoyé au contact de priorité 1 (${floor}_${durationMinutes})." },
+                    { "Échec de l'envoi : ${it.message ?: "vérifiez la configuration de communication et le contact prioritaire."}" }
                 )
             )
         }

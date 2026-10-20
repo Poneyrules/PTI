@@ -9,14 +9,9 @@ import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.pti.worker.alert.AlertEvent
-import com.pti.worker.alert.AlertType
 import com.pti.worker.data.db.entities.ContactEntity
-import com.pti.worker.location.PtiLocation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class SmsCommunicationManager(private val context: Context) : CommunicationManager {
 
@@ -51,7 +46,7 @@ class SmsCommunicationManager(private val context: Context) : CommunicationManag
             return@withContext Result.failure(IllegalStateException("Aucun contact d'urgence"))
         }
 
-        val message = buildAlertMessage(alert)
+        val message = AlertMessageFormatter.formatAlert(alert)
         var successCount = 0
         var lastError: Exception? = null
         val smsManager = getSmsManager()
@@ -74,39 +69,6 @@ class SmsCommunicationManager(private val context: Context) : CommunicationManag
     override suspend fun sendPreAlert(alert: AlertEvent, contacts: List<ContactEntity>): Result<Unit> {
         Log.i(tag, "Pré-alerte (pas d'envoi SMS) : ${alert.type}")
         return Result.success(Unit)
-    }
-
-    private fun buildAlertMessage(alert: AlertEvent): String {
-        val typeLabel = when (alert.type) {
-            AlertType.MANUAL_SOS -> "SOS MANUEL"
-            AlertType.FALL -> "CHUTE DÉTECTÉE"
-            AlertType.IMMOBILITY -> "IMMOBILITÉ PROLONGÉE"
-            AlertType.ORIENTATION -> "PERTE DE VERTICALITÉ"
-            else -> "ALERTE PTI"
-        }
-        val locationPart = formatLocation(alert.location)
-        val timePart = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.FRANCE).format(Date(alert.timestamp))
-
-        return buildString {
-            append("ALERTE PTI – $typeLabel\n")
-            val name = alert.workerName?.trim().orEmpty()
-            if (name.isNotEmpty()) {
-                append("Travailleur : $name\n")
-            }
-            append("Heure : $timePart\n")
-            if (locationPart != null && alert.location != null) {
-                append("Position : $locationPart\n")
-                append("Maps : https://maps.google.com/?q=${alert.location.latitude},${alert.location.longitude}\n")
-            } else {
-                append("Position : indisponible\n")
-            }
-            append(alert.message ?: "")
-        }.take(400)
-    }
-
-    private fun formatLocation(location: PtiLocation?): String? {
-        if (location == null) return null
-        return "%.5f, %.5f (±%.0fm)".format(location.latitude, location.longitude, location.accuracy)
     }
 
     private fun sendSms(smsManager: SmsManager, phoneNumber: String, message: String) {

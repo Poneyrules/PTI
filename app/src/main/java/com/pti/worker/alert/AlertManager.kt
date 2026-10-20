@@ -23,8 +23,11 @@ import android.telephony.TelephonyManager
 import android.util.Log
 import com.pti.worker.MainActivity
 import com.pti.worker.communication.CommunicationManager
+import com.pti.worker.communication.AlertMessageFormatter
 import com.pti.worker.communication.LinphoneSipClient
 import com.pti.worker.contact.ContactManager
+import com.pti.worker.data.db.entities.ContactEntity
+import com.pti.worker.data.db.entities.SettingsEntity
 import com.pti.worker.data.repository.EventRepository
 import com.pti.worker.location.PtiLocationManager
 import com.pti.worker.settings.SettingsManager
@@ -146,10 +149,17 @@ class AlertManager(
             )
 
             val contacts = contactManager.getEnabledContacts()
-            val result = communicationManager.sendAlert(alert, contacts)
+            val result = if (settings.sipEnabled) {
+                sendSipAlert(alert, contacts, settings)
+            } else {
+                communicationManager.sendAlert(alert, contacts)
+            }
             if (result.isFailure) {
                 Log.e(tag, "Échec envoi", result.exceptionOrNull())
-                eventRepository.logEvent("SMS_SEND_FAILED", result.exceptionOrNull()?.message)
+                eventRepository.logEvent(
+                    if (settings.sipEnabled) "SIP_MESSAGE_FAILED" else "SMS_SEND_FAILED",
+                    result.exceptionOrNull()?.message
+                )
             }
 
             // SIP est le canal voix de secours pour tout type d'alerte. Sans SIP,
@@ -171,6 +181,31 @@ class AlertManager(
             delay(durationMs)
             Log.d(tag, "Fenêtre d'annulation expirée")
         }
+    }
+
+    private suspend fun sendSipAlert(
+        alert: AlertEvent,
+        contacts: List<ContactEntity>,
+        settings: SettingsEntity
+    ): Result<Unit> {
+        val recipients = contacts.filterNot { LinphoneSipClient.isOwnAccountDestination(it.phoneNumber, settings) }
+        if (recipients.isEmpty()) return Result.failure(IllegalStateException("Aucun contact SIP destinataire actif"))
+
+        val message = AlertMessageFormatter.formatAlert(alert)
+        var sentCount = 0
+        var lastError: Throwable? = null
+        recipients.forEach { contact ->
+            val result = sipClient.sendMessage(contact.phoneNumber, message, settings)
+            if (result.isSuccess) {
+                sentCount++
+                eventRepository.logEvent("SIP_MESSAGE_QUEUED", "Message SIP vers ${contact.name}")
+            } else {
+                lastError = result.exceptionOrNull()
+                eventRepository.logEvent("SIP_MESSAGE_FAILED", "${contact.name}: ${lastError?.message}")
+            }
+        }
+        return if (sentCount > 0) Result.success(Unit)
+        else Result.failure(lastError ?: IllegalStateException("Aucun message SIP envoyé"))
     }
 
     fun acknowledgeAlert() {
@@ -201,6 +236,10 @@ class AlertManager(
         }
 
         if (settings.sipEnabled) {
+            if (LinphoneSipClient.isOwnAccountDestination(contact.phoneNumber, settings)) {
+                eventRepository.logEvent("SIP_CALL_SKIPPED", "Le contact prioritaire est le compte SIP de cet appareil")
+                return
+            }
             stopAlarmSound()
             stopVibration()
             val result = sipClient.call(contact.phoneNumber, settings)

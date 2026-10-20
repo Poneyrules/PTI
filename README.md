@@ -6,12 +6,12 @@ Application de **Protection du Travailleur Isolé (PTI)** pour smartphone Androi
 
 - Activation / désactivation du mode PTI
 - Bouton SOS manuel avec confirmation
-- Mode hors couverture : choix du niveau (-1/-2) et d'une durée (0–60 min), puis SMS au contact d'urgence prioritaire
+- Signalement de couverture : choix du niveau (-1/-2) et d'une durée (0–60 min), transmis par SMS ou SIP MESSAGE selon le mode choisi
 - Détection de chute (accéléromètre + gyroscope)
 - Détection d'immobilité prolongée
 - Détection de perte de verticalité
 - Localisation GPS (Fused Location Provider)
-- Envoi SMS réel vers contacts d'urgence
+- Envoi d'alertes textuelles aux contacts d'urgence par SMS ou SIP MESSAGE selon le mode choisi
 - Fonctionnement en arrière-plan (Foreground Service)
 - Journal local des événements (Room)
 - Paramètres configurables
@@ -52,7 +52,7 @@ PtiManager + PtiStateMachine
   ├── ImmobilityDetectionManager
   ├── OrientationManager
   ├── PtiLocationManager
-  ├── AlertManager → SmsCommunicationManager
+  ├── AlertManager → SmsCommunicationManager / LinphoneSipClient
   ├── ContactManager
   ├── SettingsManager
   └── EventRepository → Room
@@ -72,6 +72,7 @@ PtiManager + PtiStateMachine
 - Fonctionne sans serveur en version 1
 - SMS via SmsManager natif
 - SIP nécessite une connexion IP (Wi-Fi ou données mobiles), un compte SIP et un réseau joignable ; cela ne fonctionne pas hors de toute connectivité
+- Le mode SIP envoie les alertes textuelles et le signalement de couverture en SIP MESSAGE ; les comptes destinataires et le serveur doivent accepter cette fonctionnalité. Les appels SIP d'alerte utilisent le haut-parleur.
 - Le JSON distant peut être une liste ou un objet avec `contacts`/`data`; chaque entrée utilise `name` et l'un de `sipUri`, `sip`, `uri`, `phoneNumber`, `phone` ou `mobile`. Les entrées importées sont ajoutées aux contacts existants.
 - Le trafic HTTP en clair est autorisé pour prendre en charge les répertoires locaux ; préférer HTTPS lorsque le serveur le permet.
 - La bibliothèque liblinphone est distribuée sous GPLv3 ; vérifier les obligations de licence avant toute distribution de l'application.
