@@ -12,7 +12,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.pti.worker.BuildConfig
 import com.pti.worker.ui.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -166,6 +168,15 @@ fun SettingsScreen(
             SwitchRow("Restaurer après redémarrage", settings.restoreAfterBoot) {
                 viewModel.updateSettings(settings.copy(restoreAfterBoot = it))
             }
+
+            Spacer(Modifier.height(24.dp))
+            Text(
+                text = "Version ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})",
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
