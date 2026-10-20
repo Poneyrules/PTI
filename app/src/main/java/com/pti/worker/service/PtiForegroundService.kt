@@ -85,12 +85,22 @@ class PtiForegroundService : Service() {
     }
 
     private fun updateNotification(state: PtiState) {
-        val notification = buildNotification(state)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        manager.notify(Constants.NOTIFICATION_ID, notification)
+        // Keep the low-priority foreground-service notification separate. Posting an
+        // alert under the same ID would only update that notification, which may not
+        // launch its full-screen intent while the display is off.
+        manager.notify(Constants.NOTIFICATION_ID, buildNotification(state))
+        if (state == PtiState.PRE_ALERT || state == PtiState.ALERT) {
+            manager.notify(
+                Constants.ALERT_NOTIFICATION_ID,
+                buildNotification(state, isAlertNotification = true)
+            )
+        } else {
+            manager.cancel(Constants.ALERT_NOTIFICATION_ID)
+        }
     }
 
-    private fun buildNotification(state: PtiState): Notification {
+    private fun buildNotification(state: PtiState, isAlertNotification: Boolean = false): Notification {
         val openAppIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).apply {
@@ -102,7 +112,8 @@ class PtiForegroundService : Service() {
         )
 
         val isPreAlertOrAlert = state == PtiState.PRE_ALERT || state == PtiState.ALERT
-        val channelId = if (isPreAlertOrAlert) {
+        val showAlertActions = isAlertNotification && isPreAlertOrAlert
+        val channelId = if (showAlertActions) {
             Constants.ALERT_NOTIFICATION_CHANNEL_ID
         } else {
             Constants.NOTIFICATION_CHANNEL_ID
@@ -130,18 +141,18 @@ class PtiForegroundService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(state == PtiState.ACTIVE || state == PtiState.ARMING)
             .setCategory(
-                if (isPreAlertOrAlert) NotificationCompat.CATEGORY_ALARM
+                if (showAlertActions) NotificationCompat.CATEGORY_ALARM
                 else NotificationCompat.CATEGORY_SERVICE
             )
             .setPriority(
-                if (isPreAlertOrAlert) NotificationCompat.PRIORITY_HIGH
+                if (showAlertActions) NotificationCompat.PRIORITY_HIGH
                 else NotificationCompat.PRIORITY_LOW
             )
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
         // Bouton d'acquittement visible dès le déclenchement de la pré-alerte
         // (perte de verticalité, immobilité, chute) et pendant l'alerte
-        if (isPreAlertOrAlert) {
+        if (showAlertActions) {
             val cancelIntent = PendingIntent.getService(
                 this,
                 1,
