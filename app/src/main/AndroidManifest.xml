@@ -55,6 +55,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Activité dédiée aux pré-alertes et alertes, affichable écran verrouillé. -->
+        <activity
+            android:name=".AlertActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.PtiAndroid" />
+
         <service
             android:name=".service.PtiForegroundService"
             android:enabled="true"

@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.pti.worker.AlertActivity
 import com.pti.worker.MainActivity
 import com.pti.worker.PtiApplication
 import com.pti.worker.core.PtiManager
@@ -101,9 +102,12 @@ class PtiForegroundService : Service() {
     }
 
     private fun buildNotification(state: PtiState, isAlertNotification: Boolean = false): Notification {
+        val isPreAlertOrAlert = state == PtiState.PRE_ALERT || state == PtiState.ALERT
+        val showAlertActions = isAlertNotification && isPreAlertOrAlert
+        val activity = if (showAlertActions) AlertActivity::class.java else MainActivity::class.java
         val openAppIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java).apply {
+            this, if (showAlertActions) 2 else 0,
+            Intent(this, activity).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_NEW_TASK
@@ -111,8 +115,6 @@ class PtiForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val isPreAlertOrAlert = state == PtiState.PRE_ALERT || state == PtiState.ALERT
-        val showAlertActions = isAlertNotification && isPreAlertOrAlert
         val channelId = if (showAlertActions) {
             Constants.ALERT_NOTIFICATION_CHANNEL_ID
         } else {
