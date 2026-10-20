@@ -117,6 +117,7 @@ class LinphoneSipClient(context: Context) {
             val call = sipCore.invite(address)
                 ?: error("Échec de lancement de l'appel SIP vers $address")
             speaker?.let { call.outputAudioDevice = it }
+            Unit
         }
     }
 
@@ -134,7 +135,7 @@ class LinphoneSipClient(context: Context) {
                 val chatRoom = sipCore.createChatRoom(
                     sipCore.createDefaultChatRoomParams(),
                     accountIdentity,
-                    remoteAddress
+                    arrayOf(remoteAddress)
                 ) ?: error("Impossible de créer la conversation SIP avec $destination")
                 chatRoom.createMessageFromUtf8(message).send()
             }
