@@ -8,6 +8,8 @@ class ContactRepository(private val contactDao: ContactDao) {
 
     fun getAllContacts(): Flow<List<ContactEntity>> = contactDao.getAllContacts()
 
+    suspend fun getAllContactsSnapshot(): List<ContactEntity> = contactDao.getAllContactsSnapshot()
+
     suspend fun getEnabledContacts(): List<ContactEntity> = contactDao.getEnabledContacts()
 
     suspend fun addContact(contact: ContactEntity): Long = contactDao.insert(contact)

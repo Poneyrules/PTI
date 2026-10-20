@@ -2,7 +2,9 @@ package com.pti.worker.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.Info
@@ -63,6 +65,25 @@ fun MainScreen(
                     actionIconContentColor = Color.White
                 )
             )
+        },
+        bottomBar = {
+            Row(
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SosButton(
+                    enabled = uiState.ptiState != PtiState.PRE_ALERT && uiState.ptiState != PtiState.ALERT,
+                    onClick = { viewModel.requestSosConfirmation() },
+                    modifier = Modifier.size(148.dp)
+                )
+                Image(
+                    painter = painterResource(id = R.drawable.logo_procomm),
+                    contentDescription = "PROCOMM-MMC",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.width(120.dp).height(80.dp)
+                )
+            }
         }
     ) { padding ->
         Box(
@@ -73,7 +94,8 @@ fun MainScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 StatusCard(uiState)
@@ -129,24 +151,7 @@ fun MainScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // SOS toujours disponible (sauf pendant pré-alerte/alerte pour éviter confusion)
-                SosButton(
-                    enabled = uiState.ptiState != PtiState.PRE_ALERT && uiState.ptiState != PtiState.ALERT,
-                    onClick = { viewModel.requestSosConfirmation() }
-                )
             }
-
-            // Logo PROCOMM-MMC en bas à droite
-            Image(
-                painter = painterResource(id = R.drawable.logo_procomm),
-                contentDescription = "PROCOMM-MMC",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 12.dp, bottom = 12.dp)
-                    .width(120.dp)
-                    .height(80.dp)
-            )
         }
     }
 
@@ -365,11 +370,11 @@ private fun MainActionButton(uiState: MainUiState, viewModel: MainViewModel) {
 }
 
 @Composable
-private fun SosButton(enabled: Boolean, onClick: () -> Unit) {
+private fun SosButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier.size(180.dp)) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(180.dp),
+        modifier = modifier,
         colors = ButtonDefaults.buttonColors(containerColor = PtiRed, disabledContainerColor = PtiDisabled),
         shape = RoundedCornerShape(90.dp),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)

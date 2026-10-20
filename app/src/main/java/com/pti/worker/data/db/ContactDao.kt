@@ -23,6 +23,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts ORDER BY priority ASC, name ASC")
     fun getAllContacts(): Flow<List<ContactEntity>>
 
+    @Query("SELECT * FROM contacts")
+    suspend fun getAllContactsSnapshot(): List<ContactEntity>
+
     @Query("SELECT * FROM contacts WHERE isEnabled = 1 ORDER BY priority ASC")
     suspend fun getEnabledContacts(): List<ContactEntity>
 

@@ -7,6 +7,7 @@ import com.pti.worker.PtiApplication
 import com.pti.worker.data.db.entities.SettingsEntity
 import com.pti.worker.settings.SettingsManager
 import com.pti.worker.contact.ContactManager
+import com.pti.worker.contact.ImportedContact
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,13 +72,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 }
             }
             result.onSuccess { contacts ->
-                contacts.forEach { (name, address, priority) -> contactManager.addContact(name, address, priority) }
-                _sipImportStatus.value = "${contacts.size} contact(s) importé(s)."
+                val importResult = contactManager.addContactsIfMissing(contacts)
+                _sipImportStatus.value = if (importResult.added == 0) {
+                    "Tous les contacts sont déjà importés ; aucun doublon ajouté."
+                } else {
+                    "${importResult.added} contact(s) ajouté(s), ${importResult.skipped} déjà présent(s) ignoré(s)."
+                }
             }.onFailure { _sipImportStatus.value = "Import impossible : ${it.message ?: "réponse invalide"}" }
         }
     }
 
-    private fun parseContacts(body: String): List<Triple<String, String, Int>> {
+    private fun parseContacts(body: String): List<ImportedContact> {
         val json = body.trim()
         val root = if (json.startsWith("[")) {
             JSONArray(json)
@@ -112,7 +117,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     .orEmpty().ifBlank { listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ") }
                 val address = listOf("sipUri", "sip", "uri", "phoneNumber", "phone", "mobile", "number", "telephone", "tel", "extension", "username", "numero", "poste")
                     .firstNotNullOfOrNull { key -> item.optString(key).trim().takeIf { it.isNotBlank() && it != "null" } }
-                if (name.isNotBlank() && address != null) add(Triple(name, address, item.optInt("priority", 1).coerceAtLeast(1)))
+                if (name.isNotBlank() && address != null) {
+                    add(ImportedContact(name, address, item.optInt("priority", 1).coerceAtLeast(1)))
+                }
             }
         }.also { require(it.isNotEmpty()) { "Aucun contact reconnu. Chaque contact doit contenir un nom (name/nom) et une adresse (sipUri/uri/phone/number/extension)." } }
     }

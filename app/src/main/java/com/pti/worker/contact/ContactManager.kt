@@ -28,6 +28,24 @@ class ContactManager(private val contactRepository: ContactRepository) {
         )
     }
 
+    /** Adds only previously unseen addresses, including duplicates within the downloaded list. */
+    suspend fun addContactsIfMissing(contacts: List<ImportedContact>): ContactImportResult {
+        val knownAddresses = contactRepository.getAllContactsSnapshot()
+            .map { normalizeContactAddress(it.phoneNumber) }
+            .toMutableSet()
+        var added = 0
+        var skipped = 0
+        contacts.forEach { contact ->
+            if (!knownAddresses.add(normalizeContactAddress(contact.address))) {
+                skipped++
+            } else {
+                addContact(contact.name, contact.address, contact.priority)
+                added++
+            }
+        }
+        return ContactImportResult(added, skipped)
+    }
+
     suspend fun updateContact(contact: ContactEntity) = contactRepository.updateContact(contact)
 
     suspend fun deleteContact(contact: ContactEntity) = contactRepository.deleteContact(contact)
@@ -35,4 +53,16 @@ class ContactManager(private val contactRepository: ContactRepository) {
     suspend fun setEnabled(contact: ContactEntity, enabled: Boolean) {
         contactRepository.updateContact(contact.copy(isEnabled = enabled))
     }
+
+    private fun normalizeContactAddress(address: String): String {
+        var normalized = address.trim().filterNot(Char::isWhitespace).lowercase()
+        listOf("sips:", "sip:", "tel:").firstOrNull { prefix -> normalized.startsWith(prefix) }?.let { prefix ->
+            normalized = normalized.removePrefix(prefix)
+        }
+        return normalized
+    }
 }
+
+data class ImportedContact(val name: String, val address: String, val priority: Int)
+
+data class ContactImportResult(val added: Int, val skipped: Int)
