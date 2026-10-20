@@ -67,21 +67,19 @@ fun MainScreen(
             )
         },
         bottomBar = {
-            Row(
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().height(156.dp)
             ) {
                 SosButton(
                     enabled = uiState.ptiState != PtiState.PRE_ALERT && uiState.ptiState != PtiState.ALERT,
                     onClick = { viewModel.requestSosConfirmation() },
-                    modifier = Modifier.size(148.dp)
+                    modifier = Modifier.align(Alignment.Center).size(140.dp)
                 )
                 Image(
                     painter = painterResource(id = R.drawable.logo_procomm),
                     contentDescription = "PROCOMM-MMC",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.width(120.dp).height(80.dp)
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp).width(72.dp).height(48.dp)
                 )
             }
         }
